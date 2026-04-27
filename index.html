@@ -96,17 +96,19 @@ windyInit(options, windyAPI => {
     store.set('baseLayer', 'dark');
     store.set('overlay', 'radar');
     
+    // Initial Airspace Activation
+    store.set('airspaces', true); 
+
     setTimeout(() => { 
         broadcast.emit('p-play'); 
     }, 3000);
 });
 
-// THE FIXED SWITCHER
+// THE FIXED SWITCHER WITH AIRSPACE PERSISTENCE
 function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // Mapping for 2026 API internal names
     const layerNames = {
         'radar': 'radar',
         'wind': 'wind',
@@ -118,8 +120,7 @@ function changeLayer(layerKey, btn) {
 
     const targetOverlay = layerNames[layerKey];
 
-    // 1. FORCE THE MODEL FIRST
-    // Radar and Satellite use 'observation'. Everything else uses 'ecmwf'.
+    // 1. Logic for Engine Switch
     if (layerKey === 'radar' || layerKey === 'satellite') {
         store.set('product', 'observation');
         store.set('isolines', 'none');
@@ -128,18 +129,19 @@ function changeLayer(layerKey, btn) {
         store.set('isolines', 'pressure');
     }
 
-    // 2. NOW SET THE OVERLAY
-    // We use a slight timeout to let the 'product' switch take hold
-    setTimeout(() => {
-        store.set('overlay', targetOverlay);
-    }, 50);
+    // 2. Set the Overlay
+    store.set('overlay', targetOverlay);
+    
+    // 3. FORCE AIRSPACE OVERLAY (VFR Map)
+    // We set it to true again to ensure it stays visible on the new layer
+    store.set('airspaces', true); 
 
-    // 3. UI Update
+    // UI Update
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
 
-// WEATHER DATA FETCH
+// WEATHER DATA FETCH (METAR/TAF)
 async function updateWeather() {
     const icao = 'EGNM';
     const proxy = 'https://corsproxy.io/?';
@@ -157,9 +159,9 @@ async function updateWeather() {
 
         if (metarText.length > 5) document.getElementById('metar').innerText = metarText.trim();
         if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
-        document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
+        document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
     } catch (err) {
-        console.log("Weather fetch stalled...");
+        console.log("Feed interrupted...");
     }
 }
 
