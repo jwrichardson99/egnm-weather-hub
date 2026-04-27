@@ -15,35 +15,53 @@
             width: 380px; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,1);
         }
 
-        /* Layer Switcher Styling */
         #layer-picker {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 10; background: rgba(0, 0, 0, 0.8); padding: 10px;
-            border-radius: 30px; border: 1px solid #444; display: flex; gap: 10px;
+            z-index: 10; background: rgba(0, 0, 0, 0.9); padding: 10px;
+            border-radius: 30px; border: 1px solid #444; display: flex; gap: 8px;
         }
         .layer-btn {
-            background: #222; color: #fff; border: 1px solid #555; padding: 8px 15px;
-            border-radius: 20px; cursor: pointer; font-size: 0.8em; transition: 0.3s;
+            background: #222; color: #fff; border: 1px solid #555; padding: 8px 12px;
+            border-radius: 20px; cursor: pointer; font-size: 0.75em; transition: 0.3s;
         }
-        .layer-btn:hover { background: #00ff41; color: #000; }
-        .layer-btn.active { background: #00ff41; color: #000; border-color: #fff; }
+        .layer-btn.active { background: #00ff41; color: #000; font-weight: bold; }
 
         .label { color: #fff; font-size: 0.75em; display: block; border-bottom: 1px solid #444; margin-bottom: 5px; }
 
+        /* METAR: Horizontal */
         .metar-container { width: 100%; overflow: hidden; white-space: nowrap; margin-bottom: 15px; }
         .metar-text {
             display: inline-block; color: #00ff41; font-size: 1.1em; font-weight: bold;
-            animation: marquee-left 15s linear infinite; padding-left: 100%;
+            animation: marquee-left 18s linear infinite; padding-left: 100%;
         }
 
-        .taf-container { height: 100px; overflow: hidden; position: relative; border-left: 2px solid #00ff41; padding-left: 10px; }
+        /* TAF: VERTICAL UPWARDS FIX */
+        .taf-container { 
+            height: 90px; 
+            overflow: hidden; 
+            position: relative; 
+            border-left: 2px solid #00ff41; 
+            padding-left: 10px; 
+        }
         .taf-text {
-            position: absolute; color: #00ff41; font-size: 1.0em; width: 100%;
-            animation: scroll-up 20s linear infinite; white-space: pre-wrap; 
+            position: absolute; 
+            color: #00ff41; 
+            font-size: 0.95em; 
+            width: 100%;
+            white-space: pre-wrap; 
+            animation: scroll-up 25s linear infinite; /* Adjusted speed for readability */
         }
 
-        @keyframes marquee-left { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-        @keyframes scroll-up { 0% { transform: translateY(100%); } 100% { transform: translateY(-100%); } }
+        @keyframes marquee-left { 
+            0% { transform: translateX(0); } 
+            100% { transform: translateX(-100%); } 
+        }
+
+        /* UPWARD ANIMATION: Starts at bottom (100%) and moves to top (-100%) */
+        @keyframes scroll-up { 
+            0% { transform: translateY(100%); } 
+            100% { transform: translateY(-130%); } 
+        }
 
         #time { font-size: 0.6em; color: #666; margin-top: 10px; text-align: right; }
     </style>
@@ -54,9 +72,9 @@
     
     <div id="overlay">
         <span class="label">METAR - EGNM</span>
-        <div class="metar-container"><div id="metar" class="metar-text">CONNECTING...</div></div>
+        <div class="metar-container"><div id="metar" class="metar-text">INITIALIZING...</div></div>
         <span class="label">TAF - EGNM (Upward)</span>
-        <div class="taf-container"><div id="taf" class="taf-text">LOADING FORECAST...</div></div>
+        <div class="taf-container"><div id="taf" class="taf-text">LOADING TAF FEED...</div></div>
         <div id="time">--:--</div>
     </div>
 
@@ -64,45 +82,43 @@
         <button class="layer-btn active" onclick="changeLayer('radar', this)">Radar</button>
         <button class="layer-btn" onclick="changeLayer('wind', this)">Wind</button>
         <button class="layer-btn" onclick="changeLayer('temp', this)">Temp</button>
-        <button class="layer-btn" onclick="changeLayer('satellite', this)">Satellite</button>
-        <button class="layer-btn" onclick="changeLayer('rain', this)">Rain/Thunder</button>
+        <button class="layer-btn" onclick="changeLayer('satellite', this)">Sat</button>
+        <button class="layer-btn" onclick="changeLayer('rain', this)">Rain</button>
         <button class="layer-btn" onclick="changeLayer('clouds', this)">Clouds</button>
     </div>
 
     <script>
         let W_API;
         const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
-        const options = { key: WINDY_KEY, lat: 53.8659, lon: -1.6606, zoom: 8 };
-
-        windyInit(options, windyAPI => {
+        
+        windyInit({ key: WINDY_KEY, lat: 53.8659, lon: -1.6606, zoom: 8 }, windyAPI => {
             W_API = windyAPI;
             const { store, broadcast } = W_API;
             
             store.set('baseLayer', 'dark');
             store.set('overlay', 'radar');
-            store.set('isolines', 'pressure'); 
+            
+            // THE PRESSURE FIX: Using both parameters to force it
+            store.set('isolines', 'pressure');
             
             setTimeout(() => { 
                 broadcast.emit('p-play'); 
-            }, 2500);
+                // Second nudge for pressure lines
+                W_API.store.set('isolines', 'pressure');
+            }, 3000);
         });
 
-        // Function to Switch Layers
-        function changeLayer(layerName, btn) {
+        function changeLayer(layer, btn) {
             if (!W_API) return;
-            const { store } = W_API;
+            W_API.store.set('overlay', layer);
             
-            // Set the new overlay
-            store.set('overlay', layerName);
-            
-            // Keep Isobars visible (Satellite doesn't support them, so we check)
-            if (layerName !== 'satellite') {
-                store.set('isolines', 'pressure');
+            // Re-apply pressure lines for all layers except satellite
+            if (layer !== 'satellite') {
+                W_API.store.set('isolines', 'pressure');
             } else {
-                store.set('isolines', 'none');
+                W_API.store.set('isolines', 'none');
             }
 
-            // Update button UI
             document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
         }
@@ -110,21 +126,19 @@
         async function updateWeather() {
             const icao = 'EGNM';
             const proxy = 'https://corsproxy.io/?';
-            const targetMetar = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
-            const targetTaf = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+            const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+            const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
 
             try {
-                const mResp = await fetch(proxy + encodeURIComponent(targetMetar));
-                const metarText = await mResp.text();
-                const tResp = await fetch(proxy + encodeURIComponent(targetTaf));
-                const tafText = await tResp.text();
+                const mR = await fetch(proxy + encodeURIComponent(mUrl));
+                const mT = await mR.text();
+                const tR = await fetch(proxy + encodeURIComponent(tUrl));
+                const tT = await tR.text();
 
-                if (metarText) document.getElementById('metar').innerText = metarText.trim();
-                if (tafText) document.getElementById('taf').innerText = tafText.trim();
-                document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
-            } catch (err) {
-                console.error("Weather fetch failed");
-            }
+                if (mT) document.getElementById('metar').innerText = mT.trim();
+                if (tT) document.getElementById('taf').innerText = tT.trim();
+                document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
+            } catch (err) { console.error("Weather failed"); }
         }
 
         updateWeather();
