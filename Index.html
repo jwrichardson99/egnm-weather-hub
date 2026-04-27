@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EGNM Radar Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
+    <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        #windy { width: 100vw; height: 100vh; }
+        
+        /* Overlay optimized for Nest Hub visibility */
+        #aviation-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 1000;
+            background: rgba(15, 15, 15, 0.85);
+            color: #00e676; /* Bright "Radar" Green */
+            padding: 20px;
+            border-radius: 12px;
+            width: 320px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            border: 1px solid #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .label { font-weight: bold; color: #fff; margin-bottom: 4px; font-size: 0.8em; display: block; }
+        .data { margin-bottom: 15px; word-wrap: break-word; font-size: 0.95em; line-height: 1.4; }
+        #status { font-size: 0.7em; color: #888; text-align: right; }
+    </style>
+</head>
+<body>
+
+    <div id="windy"></div>
+    
+    <div id="aviation-overlay">
+        <span class="label">LEEDS BRADFORD (EGNM) - METAR</span>
+        <div id="metar" class="data">Fetching data...</div>
+        <span class="label">TAF</span>
+        <div id="taf" class="data">Fetching data...</div>
+        <div id="status">Last updated: <span id="time">--:--</span></div>
+    </div>
+
+    <script>
+        const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
+        const CHECKWX_KEY = '5024b8a797df490cb1e783465b4ce8c3';
+
+        const windyOptions = {
+            key: WINDY_KEY,
+            lat: 53.8659, 
+            lon: -1.6606,
+            zoom: 8,
+        };
+
+        windyInit(windyOptions, windyAPI => {
+            const { map, store, broadcast } = windyAPI;
+
+            // 1. Configure the Visuals
+            store.set('baseLayer', 'dark'); // High contrast for radar
+            store.set('overlay', 'radar');   // Set Radar as background
+
+            // 2. Auto-Play the Radar animation
+            // We wait a moment for the map to load, then trigger play
+            setTimeout(() => {
+                broadcast.emit('p-play');
+            }, 2000);
+
+            // 3. Aviation Data Logic
+			async function getAviationData() {
+    const icao = 'EGNM';
+    const apiKey = '5024b8a797df490cb1e783465b4ce8c3';
+    
+    // We'll try the 'all-origins' proxy which is very reliable for headers
+    const proxy = 'https://api.allorigins.win/get?url=';
+    const targetUrl = encodeURIComponent(`https://api.checkwx.com/station/${icao}/decoded`);
+
+    try {
+        const response = await fetch(`${proxy}${targetUrl}`, {
+            headers: { 'X-API-Key': apiKey }
+        });
+
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const wrapper = await response.json();
+        const data = JSON.parse(wrapper.contents); // AllOrigins wraps the result in a 'contents' string
+
+        if (data && data.data && data.data.length > 0) {
+            const station = data.data[0];
+            
+            // Populate the fields
+            document.getElementById('metar').innerText = station.metar || "No METAR available";
+            document.getElementById('taf').innerText = station.taf || "No TAF available";
+            document.getElementById('time').innerText = new Date().toLocaleTimeString();
+        } else {
+            document.getElementById('metar').innerText = "Station EGNM not found.";
+        }
+
+    } catch (e) {
+        console.error("Detailed Error:", e);
+        document.getElementById('metar').innerText = "Error: " + e.message;
+    }
+}
+
+            getAviationData();
+            setInterval(getAviationData, 600000); // Refresh every 10 minutes
+        });
+    </script>
+</body>
+</html>
