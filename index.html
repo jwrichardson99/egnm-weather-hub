@@ -68,40 +68,55 @@
             // 3. Aviation Data Logic
 			async function getAviationData() {
 			    const icao = 'EGNM';
-			    const apiKey = '5024b8a797df490cb1e783465b4ce8c3';
 			    
-			    // 1. We use corsproxy.io as the bridge. 
-			    // 2. We put the API key directly in the URL (?x-api-key=) so we don't need custom headers.
-			    const targetUrl = `https://api.checkwx.com/v2/metar/${icao}/decoded?x-api-key=${apiKey}`;
-			    const proxiedUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+			    // Official NOAA/AWC API Endpoint (No Key Required!)
+			    // ids=EGNM (Station)
+			    // format=json (We want data we can read)
+			    // taf=true (Get the forecast too)
+			    const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
 			
 			    try {
-			        const response = await fetch(proxiedUrl);
-			        
-			        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-			        
+			        const response = await fetch(url, {
+			            headers: {
+			                // It is good practice to identify your app to NOAA
+			                'User-Agent': 'NestHubWeatherDashboard/1.0 (Contact: your@email.com)'
+			            }
+			        });
+			
+			        if (!response.ok) throw new Error(`AWC Error: ${response.status}`);
+			
 			        const data = await response.json();
 			
-			        // CheckWX v2 returns an array in the 'data' field
-			        if (data && data.data && data.data.length > 0) {
-			            const report = data.data[0];
+			        if (data && data.length > 0) {
+			            const report = data[0];
 			            
-			            // Display the raw METAR text
-			            document.getElementById('metar').innerText = report.raw_text || "METAR not found";
+			            // AWC typically provides the raw text in the 'rawOb' field
+			            document.getElementById('metar').innerText = report.rawOb || "METAR not found";
 			            
-			            // Check if TAF is included in the decoded response
-			            // (Note: If TAF is missing, we can add a second fetch specifically for /taf/)
-			            document.getElementById('taf').innerText = report.taf || "TAF not available for this station";
+			            // TAFs are often in a 'taf' property or a separate nested object
+			            // If they provided the TAF in this combined call:
+			            document.getElementById('taf').innerText = report.rawTaf || "TAF not currently available";
 			            
-			            // Update the 'Last Updated' time
 			            document.getElementById('time').innerText = new Date().toLocaleTimeString();
 			        } else {
-			            document.getElementById('metar').innerText = "Station EGNM not found.";
+			            document.getElementById('metar').innerText = "Station EGNM not reported.";
 			        }
 			
 			    } catch (e) {
-			        console.error("Fetch Error:", e);
-			        document.getElementById('metar').innerText = "Error: " + e.message;
+			        console.error("NOAA Fetch Error:", e);
+			        // If NOAA also blocks CORS, we fall back to a simple proxy
+			        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+			        
+			        try {
+			            const pResp = await fetch(proxyUrl);
+			            const pData = await pResp.json();
+			            if (pData[0]) {
+			                document.getElementById('metar').innerText = pData[0].rawOb;
+			                document.getElementById('taf').innerText = pData[0].rawTaf || "TAF not available";
+			            }
+			        } catch (proxyError) {
+			            document.getElementById('metar').innerText = "Data Source Offline. Check connection.";
+			        }
 			    }
 			}
 
