@@ -78,57 +78,39 @@
             setTimeout(() => { broadcast.emit('p-play'); }, 2000);
 
            async function getAviationData() {
-            const icao = 'EGNM';
-            // 2026 NOAA endpoint - using the most stable query parameters
-            const targetUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
-            
-            // Using corsproxy.io wrapper
-            const proxiedUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-        
-            try {
-                const response = await fetch(proxiedUrl);
-                
-                if (!response.ok) throw new Error('Proxy error');
-        
-                const data = await response.json();
-        
-                // NOAA 2026 logic: check for 'raw_text' or the older 'rawOb'
-                if (data && data.length > 0) {
-                    const report = data[0];
-                    
-                    // Try every possible field name NOAA uses
-                    const metarText = report.raw_text || report.rawOb || report.metar_id || "METAR LOADED - PENDING TEXT";
-                    const tafText = report.rawTaf || report.taf_raw || "TAF PENDING...";
-        
-                    document.getElementById('metar').innerText = metarText;
-                    document.getElementById('taf').innerText = tafText;
-                    document.getElementById('time').innerText = new Date().toLocaleTimeString();
-                    
-                    console.log("Success! Data received for " + icao);
-                } else {
-                    document.getElementById('metar').innerText = "STATION EGNM: NO CURRENT REPORT";
-                }
-        
-            } catch (e) {
-                console.error("Fetch failure:", e);
-                // If the JSON fails, we try one final simple text fetch
-                document.getElementById('metar').innerText = "SYNCING WITH NOAA GLOBAL FEED...";
-                
-                // Final desperate attempt: try a different proxy automatically
-                try {
-                    const backupUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-                    const bResp = await fetch(backupUrl);
-                    const bData = await bResp.json();
-                    const bParsed = JSON.parse(bData.contents);
-                    if(bParsed[0]) {
-                        document.getElementById('metar').innerText = bParsed[0].raw_text;
-                        document.getElementById('taf').innerText = bParsed[0].rawTaf;
-                    }
-                } catch(err) {
-                    // Keep the "Syncing" message visible if all else fails
-                }
-            }
+    const icao = 'EGNM';
+    
+    // Using a more stable NOAA endpoint for 2026
+    const metarUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+    const tafUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+    
+    // We'll use a reliable bridge to get around the security block
+    const proxy = 'https://api.allorigins.win/get?url=';
+
+    try {
+        // Fetch METAR
+        const mResp = await fetch(`${proxy}${encodeURIComponent(metarUrl)}`);
+        const mData = await mResp.json();
+        // The weather data is hidden inside 'contents'
+        if (mData.contents) {
+            document.getElementById('metar').innerText = mData.contents.trim() || "METAR NOT FOUND";
         }
+
+        // Fetch TAF
+        const tResp = await fetch(`${proxy}${encodeURIComponent(tafUrl)}`);
+        const tData = await tResp.json();
+        if (tData.contents) {
+            document.getElementById('taf').innerText = tData.contents.trim() || "TAF NOT FOUND";
+        }
+
+        document.getElementById('time').innerText = new Date().toLocaleTimeString();
+        console.log("Weather updated successfully");
+
+    } catch (e) {
+        console.error("Connection failed:", e);
+        document.getElementById('metar').innerText = "RECONNECTING TO DATA STREAM...";
+    }
+}
 
             getAviationData();
             setInterval(getAviationData, 600000); // 10 minute refresh
