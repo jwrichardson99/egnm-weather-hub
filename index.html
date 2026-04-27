@@ -1,32 +1,52 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>EGNM Radar Dashboard</title>
+    <title>EGNM Radar & Weather</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
     <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
     <style>
-        body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
         #windy { width: 100vw; height: 100vh; }
         
-        /* Overlay optimized for Nest Hub visibility */
         #aviation-overlay {
             position: absolute;
             top: 15px;
             left: 15px;
             z-index: 1000;
-            background: rgba(15, 15, 15, 0.85);
-            color: #00e676; /* Bright "Radar" Green */
-            padding: 20px;
-            border-radius: 12px;
-            width: 320px;
-            font-family: 'Monaco', 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.85);
+            color: #00ff41; /* "Matrix" green */
+            padding: 15px;
+            border-radius: 10px;
+            width: 350px;
             border: 1px solid #333;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 0 20px rgba(0,0,0,1);
         }
-        .label { font-weight: bold; color: #fff; margin-bottom: 4px; font-size: 0.8em; display: block; }
-        .data { margin-bottom: 15px; word-wrap: break-word; font-size: 0.95em; line-height: 1.4; }
-        #status { font-size: 0.7em; color: #888; text-align: right; }
+
+        .label { color: #fff; font-size: 0.75em; margin-bottom: 5px; display: block; border-bottom: 1px solid #444; }
+        
+        /* The Scrolling Container */
+        .scroll-container {
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            margin-bottom: 15px;
+        }
+
+        .scroll-text {
+            display: inline-block;
+            padding-left: 100%;
+            animation: marquee 20s linear infinite;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+
+        @keyframes marquee {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(-100%, 0); }
+        }
+
+        #status { font-size: 0.6em; color: #666; text-align: right; }
     </style>
 </head>
 <body>
@@ -34,94 +54,59 @@
     <div id="windy"></div>
     
     <div id="aviation-overlay">
-        <span class="label">LEEDS BRADFORD (EGNM) - METAR</span>
-        <div id="metar" class="data">Fetching data...</div>
-        <span class="label">TAF</span>
-        <div id="taf" class="data">Fetching data...</div>
-        <div id="status">Last updated: <span id="time">--:--</span></div>
+        <span class="label">METAR - EGNM</span>
+        <div class="scroll-container">
+            <div id="metar" class="scroll-text">CONNECTING TO NOAA...</div>
+        </div>
+
+        <span class="label">TAF - EGNM</span>
+        <div class="scroll-container">
+            <div id="taf" class="scroll-text">WAITING FOR DATA...</div>
+        </div>
+        <div id="status">Updated: <span id="time">--:--</span></div>
     </div>
 
     <script>
         const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
-        const CHECKWX_KEY = '5024b8a797df490cb1e783465b4ce8c3';
 
-        const windyOptions = {
-            key: WINDY_KEY,
-            lat: 53.8659, 
-            lon: -1.6606,
-            zoom: 8,
-        };
+        windyInit({ key: WINDY_KEY, lat: 53.8659, lon: -1.6606, zoom: 8 }, windyAPI => {
+            const { store, broadcast } = windyAPI;
+            store.set('baseLayer', 'dark');
+            store.set('overlay', 'radar');
+            
+            // Auto-play radar animation
+            setTimeout(() => { broadcast.emit('p-play'); }, 2000);
 
-        windyInit(windyOptions, windyAPI => {
-            const { map, store, broadcast } = windyAPI;
+            async function getAviationData() {
+                // Official NOAA AWC API - No Key Needed!
+                const url = `https://aviationweather.gov/api/data/metar?ids=EGNM&format=json&taf=true`;
+                
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
 
-            // 1. Configure the Visuals
-            store.set('baseLayer', 'dark'); // High contrast for radar
-            store.set('overlay', 'radar');   // Set Radar as background
-
-            // 2. Auto-Play the Radar animation
-            // We wait a moment for the map to load, then trigger play
-            setTimeout(() => {
-                broadcast.emit('p-play');
-            }, 2000);
-
-            // 3. Aviation Data Logic
-			async function getAviationData() {
-			    const icao = 'EGNM';
-			    
-			    // Official NOAA/AWC API Endpoint (No Key Required!)
-			    // ids=EGNM (Station)
-			    // format=json (We want data we can read)
-			    // taf=true (Get the forecast too)
-			    const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
-			
-			    try {
-			        const response = await fetch(url, {
-			            headers: {
-			                // It is good practice to identify your app to NOAA
-			                'User-Agent': 'NestHubWeatherDashboard/1.0 (Contact: your@email.com)'
-			            }
-			        });
-			
-			        if (!response.ok) throw new Error(`AWC Error: ${response.status}`);
-			
-			        const data = await response.json();
-			
-			        if (data && data.length > 0) {
-			            const report = data[0];
-			            
-			            // AWC typically provides the raw text in the 'rawOb' field
-			            document.getElementById('metar').innerText = report.rawOb || "METAR not found";
-			            
-			            // TAFs are often in a 'taf' property or a separate nested object
-			            // If they provided the TAF in this combined call:
-			            document.getElementById('taf').innerText = report.rawTaf || "TAF not currently available";
-			            
-			            document.getElementById('time').innerText = new Date().toLocaleTimeString();
-			        } else {
-			            document.getElementById('metar').innerText = "Station EGNM not reported.";
-			        }
-			
-			    } catch (e) {
-			        console.error("NOAA Fetch Error:", e);
-			        // If NOAA also blocks CORS, we fall back to a simple proxy
-			        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-			        
-			        try {
-			            const pResp = await fetch(proxyUrl);
-			            const pData = await pResp.json();
-			            if (pData[0]) {
-			                document.getElementById('metar').innerText = pData[0].rawOb;
-			                document.getElementById('taf').innerText = pData[0].rawTaf || "TAF not available";
-			            }
-			        } catch (proxyError) {
-			            document.getElementById('metar').innerText = "Data Source Offline. Check connection.";
-			        }
-			    }
-			}
+                    if (data && data.length > 0) {
+                        const report = data[0];
+                        // Update the text - it will automatically start scrolling
+                        document.getElementById('metar').innerText = report.rawOb || "NO METAR AVAILABLE";
+                        document.getElementById('taf').innerText = report.rawTaf || "NO TAF AVAILABLE";
+                        document.getElementById('time').innerText = new Date().toLocaleTimeString();
+                    }
+                } catch (e) {
+                    console.error("Fetch Error:", e);
+                    // Fallback to Proxy if browser blocks direct NOAA access
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+                    const pResp = await fetch(proxyUrl);
+                    const pData = await pResp.json();
+                    if(pData[0]) {
+                        document.getElementById('metar').innerText = pData[0].rawOb;
+                        document.getElementById('taf').innerText = pData[0].rawTaf;
+                    }
+                }
+            }
 
             getAviationData();
-            setInterval(getAviationData, 600000); // Refresh every 10 minutes
+            setInterval(getAviationData, 600000); // 10 minute refresh
         });
     </script>
 </body>
