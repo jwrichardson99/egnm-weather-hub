@@ -78,37 +78,31 @@
             setTimeout(() => { broadcast.emit('p-play'); }, 2000);
 
             async function getAviationData() {
-                const icao = 'EGNM';
-                // The official 2026 NOAA AWC Endpoint
-                const targetUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
-                const proxiedUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-            
-                try {
-                    const response = await fetch(proxiedUrl);
-                    if (!response.ok) throw new Error('Network response was not ok');
+                    const icao = 'EGNM';
+                    // Direct, simplified NOAA link
+                    const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
                     
-                    const data = await response.json();
-            
-                    // 2026 Update: NOAA returns an array of station objects
-                    if (data && data.length > 0) {
-                        const report = data[0];
-                        
-                        // In 2026, 'raw_text' is the standard field name
-                        const metarStr = report.raw_text || "METAR CURRENTLY UNAVAILABLE";
-                        const tafStr = report.rawTaf || report.taf_raw || "TAF CURRENTLY UNAVAILABLE";
-            
-                        document.getElementById('metar').innerText = metarStr;
-                        document.getElementById('taf').innerText = tafStr;
-                        
-                        document.getElementById('time').innerText = new Date().toLocaleTimeString();
-                    } else {
-                        document.getElementById('metar').innerText = "STATION EGNM NOT REPORTING AT THIS TIME";
+                    // We use a different proxy that is currently the fastest in 2026
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                
+                    try {
+                        const response = await fetch(proxyUrl);
+                        const wrapper = await response.json();
+                        const data = JSON.parse(wrapper.contents); // AllOrigins requires this extra step
+                
+                        if (data && data.length > 0) {
+                            const report = data[0];
+                            
+                            // 2026 NOAA property names
+                            document.getElementById('metar').innerText = report.raw_text || "NO METAR FOUND";
+                            document.getElementById('taf').innerText = report.rawTaf || "NO TAF FOUND";
+                            document.getElementById('time').innerText = new Date().toLocaleTimeString();
+                        }
+                    } catch (e) {
+                        console.error("Connection failed:", e);
+                        document.getElementById('metar').innerText = "WAITING FOR NOAA RESPONSE...";
                     }
-                } catch (e) {
-                    console.error("Fetch Error:", e);
-                    document.getElementById('metar').innerText = "RECONNECTING TO NOAA DATA STREAM...";
                 }
-            }
 
             getAviationData();
             setInterval(getAviationData, 600000); // 10 minute refresh
