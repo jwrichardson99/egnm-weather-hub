@@ -44,8 +44,8 @@
     }
 
     @keyframes scroll-down {
-        0% { transform: translateY(-100%); }
-        100% { transform: translateY(100%); }
+        0% { transform: translateY(100%); }
+        100% { transform: translateY(-100%); }
     }
 
     #time { font-size: 0.6em; color: #666; margin-top: 10px; text-align: right; }
@@ -76,16 +76,20 @@
         windyInit(options, windyAPI => {
     const { store, broadcast } = windyAPI;
     
-    // 1. Set your base layer (I used 'dark' here for contrast)
+    // 1. Base Layer
     store.set('baseLayer', 'dark');
     
-    // 2. Set the main colored overlay (Radar)
+    // 2. Main Layer (Radar)
     store.set('overlay', 'radar');
     
-    // 3. ADD THIS LINE: This toggles the pressure isobars on top
-    store.set('isobars', true); 
+    // 3. THE FIX: Set isolines to 'pressure'
+    // In the 2026 API, 'isobars' is a boolean, but 'isolines' is the actual layer
+    store.set('isolines', 'pressure'); 
     
-    // 4. Auto-play the radar loop
+    // 4. Force the particles (wind animation) off if they clutter the view
+    store.set('particlesAnim', 'off');
+
+    // Start the loop
     setTimeout(() => { 
         broadcast.emit('p-play'); 
     }, 2000);
