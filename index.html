@@ -80,16 +80,15 @@
     <script>
         let W_API = null; 
 
-        const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
-        const options = { 
-            key: WINDY_KEY, 
-            lat: 53.8659, 
-            lon: -1.6606, 
-            zoom: 8,
-            verbose: false 
-        };
+const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
+const options = { 
+    key: WINDY_KEY, 
+    lat: 53.8659, 
+    lon: -1.6606, 
+    zoom: 8 
+};
 
-        // 1. Updated Initialization
+// Initialize Map
 windyInit(options, windyAPI => {
     W_API = windyAPI; 
     const { store, broadcast } = W_API;
@@ -97,69 +96,71 @@ windyInit(options, windyAPI => {
     store.set('baseLayer', 'dark');
     store.set('overlay', 'radar');
     
-    // Ensure the play button works for all layers
-    setTimeout(() => { broadcast.emit('p-play'); }, 3000);
+    setTimeout(() => { 
+        broadcast.emit('p-play'); 
+    }, 3000);
 });
 
-// 2. The "Aggressive" Layer Switcher
+// THE FIXED SWITCHER
 function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // Mapping your buttons to the EXACT 2026 API Internal Names
-    const overlays = {
+    // Mapping for 2026 API internal names
+    const layerNames = {
         'radar': 'radar',
         'wind': 'wind',
         'temp': 'temp',
         'satellite': 'satellite',
-        'rain': 'rain',         // Some API versions use 'rain' or 'precip'
-        'clouds': 'clouds'      // Can also try 'cloudtop' if 'clouds' fails
+        'rain': 'rain',
+        'clouds': 'clouds'
     };
 
-    const target = overlays[layerKey];
+    const targetOverlay = layerNames[layerKey];
 
-    // STEP A: Set the Overlay
-    store.set('overlay', target);
-
-    // STEP B: Force Forecast Model (Needed for Rain/Clouds/Wind/Temp)
-    // Radar and Satellite don't use models, so we skip for them
+    // 1. Switch the Overlay
+    store.set('overlay', targetOverlay);
+    
+    // 2. CRITICAL: If switching to forecast, force a model
     if (['wind', 'temp', 'rain', 'clouds'].includes(layerKey)) {
-        store.set('product', 'ecmwf'); // Forces the European forecast model
+        store.set('product', 'ecmwf'); // The map needs this for Rain/Clouds to show
         store.set('isolines', 'pressure');
     } else {
+        // Radar and Satellite are 'observations', they don't have pressure isolines
         store.set('isolines', 'none');
     }
 
-    // UI: Update button colors
+    // Update button UI
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
 
-        async function updateWeather() {
-            const icao = 'EGNM';
-            const proxy = 'https://corsproxy.io/?';
-            const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
-            const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+// WEATHER DATA FETCH
+async function updateWeather() {
+    const icao = 'EGNM';
+    const proxy = 'https://corsproxy.io/?';
+    const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+    const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
 
-            try {
-                const [mR, tR] = await Promise.all([
-                    fetch(proxy + encodeURIComponent(mUrl)),
-                    fetch(proxy + encodeURIComponent(tUrl))
-                ]);
-                
-                const metarText = await mR.text();
-                const tafText = await tR.text();
+    try {
+        const [mR, tR] = await Promise.all([
+            fetch(proxy + encodeURIComponent(mUrl)),
+            fetch(proxy + encodeURIComponent(tUrl))
+        ]);
+        
+        const metarText = await mR.text();
+        const tafText = await tR.text();
 
-                if (metarText.length > 5) document.getElementById('metar').innerText = metarText.trim();
-                if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
-                document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
-            } catch (err) {
-                console.log("Weather update error");
-            }
-        }
+        if (metarText.length > 5) document.getElementById('metar').innerText = metarText.trim();
+        if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
+        document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
+    } catch (err) {
+        console.log("Weather fetch stalled...");
+    }
+}
 
-        updateWeather();
-        setInterval(updateWeather, 600000); 
+updateWeather();
+setInterval(updateWeather, 600000);
     </script>
 </body>
 </html>
