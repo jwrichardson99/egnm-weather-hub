@@ -1,144 +1,134 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>EGNM Radar & Weather</title>
+    <title>EGNM Radar & Weather Hub</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
     <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
     <style>
-    body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-    #windy { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-    
-    #overlay {
-        position: absolute; top: 15px; left: 15px; z-index: 10;
-        background: rgba(0, 0, 0, 0.85); padding: 15px; border-radius: 10px;
-        width: 380px; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,1);
-    }
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        #windy { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        #overlay {
+            position: absolute; top: 15px; left: 15px; z-index: 10;
+            background: rgba(0, 0, 0, 0.85); padding: 15px; border-radius: 10px;
+            width: 380px; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,1);
+        }
 
-    .label { color: #fff; font-size: 0.75em; display: block; border-bottom: 1px solid #444; margin-bottom: 5px; }
+        /* Layer Switcher Styling */
+        #layer-picker {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 10; background: rgba(0, 0, 0, 0.8); padding: 10px;
+            border-radius: 30px; border: 1px solid #444; display: flex; gap: 10px;
+        }
+        .layer-btn {
+            background: #222; color: #fff; border: 1px solid #555; padding: 8px 15px;
+            border-radius: 20px; cursor: pointer; font-size: 0.8em; transition: 0.3s;
+        }
+        .layer-btn:hover { background: #00ff41; color: #000; }
+        .layer-btn.active { background: #00ff41; color: #000; border-color: #fff; }
 
-    /* METAR: Horizontal Scroll */
-    .metar-container {
-        width: 100%; overflow: hidden; white-space: nowrap; margin-bottom: 15px;
-    }
-    .metar-text {
-        display: inline-block; color: #00ff41; font-size: 1.1em; font-weight: bold;
-        animation: marquee-left 15s linear infinite;
-        padding-left: 100%; /* Starts off-screen to the right */
-    }
+        .label { color: #fff; font-size: 0.75em; display: block; border-bottom: 1px solid #444; margin-bottom: 5px; }
 
-    /* TAF: Vertical Scroll */
-    .taf-container {
-        height: 80px; /* Fixed height to allow scrolling inside */
-        overflow: hidden; position: relative; border-left: 2px solid #00ff41; padding-left: 10px;
-    }
-    .taf-text {
-        position: absolute; color: #00ff41; font-size: 1.0em; width: 100%;
-        animation: scroll-down 12s linear infinite;
-        white-space: pre-wrap; /* Allows text to wrap into lines */
-    }
+        .metar-container { width: 100%; overflow: hidden; white-space: nowrap; margin-bottom: 15px; }
+        .metar-text {
+            display: inline-block; color: #00ff41; font-size: 1.1em; font-weight: bold;
+            animation: marquee-left 15s linear infinite; padding-left: 100%;
+        }
 
-    @keyframes marquee-left {
-        0% { transform: translateX(0); }
-        100% { transform: translateX(-100%); }
-    }
+        .taf-container { height: 100px; overflow: hidden; position: relative; border-left: 2px solid #00ff41; padding-left: 10px; }
+        .taf-text {
+            position: absolute; color: #00ff41; font-size: 1.0em; width: 100%;
+            animation: scroll-up 20s linear infinite; white-space: pre-wrap; 
+        }
 
-    @keyframes scroll-down {
-        0% { transform: translateY(100%); }
-        100% { transform: translateY(-100%); }
-    }
+        @keyframes marquee-left { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+        @keyframes scroll-up { 0% { transform: translateY(100%); } 100% { transform: translateY(-100%); } }
 
-    #time { font-size: 0.6em; color: #666; margin-top: 10px; text-align: right; }
-</style>
+        #time { font-size: 0.6em; color: #666; margin-top: 10px; text-align: right; }
+    </style>
 </head>
 <body>
 
     <div id="windy"></div>
     
     <div id="overlay">
-    <span class="label">METAR - EGNM (Right to Left)</span>
-    <div class="metar-container">
-        <div id="metar" class="metar-text">FETCHING LATEST...</div>
+        <span class="label">METAR - EGNM</span>
+        <div class="metar-container"><div id="metar" class="metar-text">CONNECTING...</div></div>
+        <span class="label">TAF - EGNM (Upward)</span>
+        <div class="taf-container"><div id="taf" class="taf-text">LOADING FORECAST...</div></div>
+        <div id="time">--:--</div>
     </div>
 
-    <span class="label">TAF - EGNM (Downward)</span>
-    <div class="taf-container">
-        <div id="taf" class="taf-text">FETCHING FORECAST...</div>
+    <div id="layer-picker">
+        <button class="layer-btn active" onclick="changeLayer('radar', this)">Radar</button>
+        <button class="layer-btn" onclick="changeLayer('wind', this)">Wind</button>
+        <button class="layer-btn" onclick="changeLayer('temp', this)">Temp</button>
+        <button class="layer-btn" onclick="changeLayer('satellite', this)">Satellite</button>
+        <button class="layer-btn" onclick="changeLayer('rain', this)">Rain/Thunder</button>
+        <button class="layer-btn" onclick="changeLayer('clouds', this)">Clouds</button>
     </div>
-    <div id="time">--:--</div>
-</div>
 
     <script>
-        // 1. MAP CONFIGURATION
+        let W_API;
         const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
         const options = { key: WINDY_KEY, lat: 53.8659, lon: -1.6606, zoom: 8 };
 
         windyInit(options, windyAPI => {
-    const { store, broadcast } = windyAPI;
-    
-    // 1. Base Layer
-    store.set('baseLayer', 'dark');
-    
-    // 2. Main Layer (Radar)
-    store.set('overlay', 'radar');
-    
-    // 3. THE FIX: Set isolines to 'pressure'
-    // In the 2026 API, 'isobars' is a boolean, but 'isolines' is the actual layer
-    store.set('isolines', 'pressure'); 
-    
-    // 4. Force the particles (wind animation) off if they clutter the view
-    store.set('particlesAnim', 'off');
+            W_API = windyAPI;
+            const { store, broadcast } = W_API;
+            
+            store.set('baseLayer', 'dark');
+            store.set('overlay', 'radar');
+            store.set('isolines', 'pressure'); 
+            
+            setTimeout(() => { 
+                broadcast.emit('p-play'); 
+            }, 2500);
+        });
 
-    // Start the loop
-    setTimeout(() => { 
-        broadcast.emit('p-play'); 
-    }, 2000);
-});
+        // Function to Switch Layers
+        function changeLayer(layerName, btn) {
+            if (!W_API) return;
+            const { store } = W_API;
+            
+            // Set the new overlay
+            store.set('overlay', layerName);
+            
+            // Keep Isobars visible (Satellite doesn't support them, so we check)
+            if (layerName !== 'satellite') {
+                store.set('isolines', 'pressure');
+            } else {
+                store.set('isolines', 'none');
+            }
 
-        // 2. WEATHER CONFIGURATION (Independent of Map)
-        async function updateWeather() {
-    const icao = 'EGNM';
-    // 1. Using the absolute simplest text-only endpoint from NOAA
-    const target = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
-    const tafTarget = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
-    
-    // 2. Using a different, faster bridge for 2026: 'ThingProxy'
-    // This proxy is often less "crowded" than AllOrigins
-    const proxy = 'https://corsproxy.io/?';
-
-    try {
-        // Fetch METAR
-        const mResp = await fetch(proxy + encodeURIComponent(target));
-        const metarText = await mResp.text();
-
-        // Fetch TAF
-        const tResp = await fetch(proxy + encodeURIComponent(tafTarget));
-        const tafText = await tResp.text();
-
-        // Check if we actually got text back
-        if (metarText && metarText.length > 5) {
-            document.getElementById('metar').innerText = metarText.trim();
-            document.getElementById('taf').innerText = tafText.trim() || "TAF NOT AVAILABLE";
-            document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
-        } else {
-            throw new Error("Empty response");
+            // Update button UI
+            document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
         }
 
-    } catch (err) {
-        console.error("Connection error:", err);
-        // If the first proxy fails (522), try the emergency fallback bridge
-        const fallback = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`;
-        fetch(fallback).then(r => r.json()).then(j => {
-            document.getElementById('metar').innerText = j.contents;
-        }).catch(() => {
-            document.getElementById('metar').innerText = "NOAA SERVER BUSY - RETRYING...";
-        });
-    }
-}
+        async function updateWeather() {
+            const icao = 'EGNM';
+            const proxy = 'https://corsproxy.io/?';
+            const targetMetar = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+            const targetTaf = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
 
-        // Start weather loop immediately
-        getAviationData();
-        setInterval(getAviationData, 600000); 
+            try {
+                const mResp = await fetch(proxy + encodeURIComponent(targetMetar));
+                const metarText = await mResp.text();
+                const tResp = await fetch(proxy + encodeURIComponent(targetTaf));
+                const tafText = await tResp.text();
+
+                if (metarText) document.getElementById('metar').innerText = metarText.trim();
+                if (tafText) document.getElementById('taf').innerText = tafText.trim();
+                document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
+            } catch (err) {
+                console.error("Weather fetch failed");
+            }
+        }
+
+        updateWeather();
+        setInterval(updateWeather, 600000); 
     </script>
 </body>
 </html>
