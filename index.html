@@ -89,46 +89,51 @@
             verbose: false 
         };
 
-        windyInit(options, windyAPI => {
-            W_API = windyAPI; 
-            const { store, broadcast } = W_API;
-            
-            store.set('baseLayer', 'dark');
-            store.set('overlay', 'radar');
-            store.set('isolines', 'none'); // Isobars off for Radar initially
-            
-            setTimeout(() => { 
-                broadcast.emit('p-play'); 
-            }, 3000);
-        });
+        // 1. Updated Initialization
+windyInit(options, windyAPI => {
+    W_API = windyAPI; 
+    const { store, broadcast } = W_API;
+    
+    store.set('baseLayer', 'dark');
+    store.set('overlay', 'radar');
+    
+    // Ensure the play button works for all layers
+    setTimeout(() => { broadcast.emit('p-play'); }, 3000);
+});
 
-        function changeLayer(layerName, btn) {
-            if (!W_API) return;
-            const { store } = W_API;
+// 2. The "Aggressive" Layer Switcher
+function changeLayer(layerKey, btn) {
+    if (!W_API) return;
+    const { store } = W_API;
 
-            // Map button keywords to exact Windy API internal names
-            const layerMapping = {
-                'radar': 'radar',
-                'wind': 'wind',
-                'temp': 'temp',
-                'satellite': 'satellite',
-                'rain': 'rain',
-                'clouds': 'clouds' 
-            };
+    // Mapping your buttons to the EXACT 2026 API Internal Names
+    const overlays = {
+        'radar': 'radar',
+        'wind': 'wind',
+        'temp': 'temp',
+        'satellite': 'satellite',
+        'rain': 'rain',         // Some API versions use 'rain' or 'precip'
+        'clouds': 'clouds'      // Can also try 'cloudtop' if 'clouds' fails
+    };
 
-            const targetLayer = layerMapping[layerName];
-            store.set('overlay', targetLayer);
-            
-            // Forecast layers allow isobars, real-time layers (Radar/Sat) usually do not
-            if (['wind', 'temp', 'rain', 'clouds'].includes(layerName)) {
-                store.set('isolines', 'pressure');
-            } else {
-                store.set('isolines', 'none');
-            }
+    const target = overlays[layerKey];
 
-            document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
+    // STEP A: Set the Overlay
+    store.set('overlay', target);
+
+    // STEP B: Force Forecast Model (Needed for Rain/Clouds/Wind/Temp)
+    // Radar and Satellite don't use models, so we skip for them
+    if (['wind', 'temp', 'rain', 'clouds'].includes(layerKey)) {
+        store.set('product', 'ecmwf'); // Forces the European forecast model
+        store.set('isolines', 'pressure');
+    } else {
+        store.set('isolines', 'none');
+    }
+
+    // UI: Update button colors
+    document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
 
         async function updateWeather() {
             const icao = 'EGNM';
