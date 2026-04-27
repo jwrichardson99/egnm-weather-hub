@@ -73,7 +73,7 @@
     <div id="overlay">
         <span class="label">METAR - EGNM</span>
         <div class="metar-container"><div id="metar" class="metar-text">INITIALIZING...</div></div>
-        <span class="label">TAF - EGNM (Upward)</span>
+        <span class="label">TAF - EGNM</span>
         <div class="taf-container"><div id="taf" class="taf-text">LOADING TAF FEED...</div></div>
         <div id="time">--:--</div>
     </div>
@@ -88,61 +88,83 @@
     </div>
 
     <script>
-        let W_API;
-        const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
+        // 1. Declare W_API at the very top so buttons can see it
+let W_API = null; 
+
+const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
+const options = { 
+    key: WINDY_KEY, 
+    lat: 53.8659, 
+    lon: -1.6606, 
+    zoom: 8,
+    verbose: true // This helps debug in the console
+};
+
+// Initialize Map
+windyInit(options, windyAPI => {
+    W_API = windyAPI; // Capturing the API globally
+    const { store, broadcast } = W_API;
+    
+    store.set('baseLayer', 'dark');
+    store.set('overlay', 'radar');
+    store.set('isolines', 'pressure'); 
+    
+    setTimeout(() => { 
+        broadcast.emit('p-play'); 
+    }, 3000);
+});
+
+// 2. FIXED LAYER SWITCHER FUNCTION
+function changeLayer(layerName, btn) {
+    if (!W_API) {
+        console.error("Windy API not loaded yet!");
+        return;
+    }
+
+    const { store } = W_API;
+
+    // Set the overlay
+    store.set('overlay', layerName);
+    
+    // 2026 LOGIC: Radar and Satellite now disable forecast isolines by default.
+    // We try to force them back for other layers.
+    if (layerName === 'radar' || layerName === 'satellite') {
+        store.set('isolines', 'none'); 
+    } else {
+        store.set('isolines', 'pressure');
+    }
+
+    // UI Feedback: Update buttons
+    document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+// 3. WEATHER DATA FETCH (Independent)
+async function updateWeather() {
+    const icao = 'EGNM';
+    const proxy = 'https://corsproxy.io/?';
+    const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+    const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+
+    try {
+        const [mR, tR] = await Promise.all([
+            fetch(proxy + encodeURIComponent(mUrl)),
+            fetch(proxy + encodeURIComponent(tUrl))
+        ]);
         
-        windyInit({ key: WINDY_KEY, lat: 53.8659, lon: -1.6606, zoom: 8 }, windyAPI => {
-            W_API = windyAPI;
-            const { store, broadcast } = W_API;
-            
-            store.set('baseLayer', 'dark');
-            store.set('overlay', 'radar');
-            
-            // THE PRESSURE FIX: Using both parameters to force it
-            store.set('isolines', 'pressure');
-            
-            setTimeout(() => { 
-                broadcast.emit('p-play'); 
-                // Second nudge for pressure lines
-                W_API.store.set('isolines', 'pressure');
-            }, 3000);
-        });
+        const metarText = await mR.text();
+        const tafText = await tR.text();
 
-        function changeLayer(layer, btn) {
-            if (!W_API) return;
-            W_API.store.set('overlay', layer);
-            
-            // Re-apply pressure lines for all layers except satellite
-            if (layer !== 'satellite') {
-                W_API.store.set('isolines', 'pressure');
-            } else {
-                W_API.store.set('isolines', 'none');
-            }
+        if (metarText.length > 10) document.getElementById('metar').innerText = metarText.trim();
+        if (tafText.length > 10) document.getElementById('taf').innerText = tafText.trim();
+        document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
+    } catch (err) {
+        console.log("Weather update paused...");
+    }
+}
 
-            document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
-
-        async function updateWeather() {
-            const icao = 'EGNM';
-            const proxy = 'https://corsproxy.io/?';
-            const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
-            const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
-
-            try {
-                const mR = await fetch(proxy + encodeURIComponent(mUrl));
-                const mT = await mR.text();
-                const tR = await fetch(proxy + encodeURIComponent(tUrl));
-                const tT = await tR.text();
-
-                if (mT) document.getElementById('metar').innerText = mT.trim();
-                if (tT) document.getElementById('taf').innerText = tT.trim();
-                document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
-            } catch (err) { console.error("Weather failed"); }
-        }
-
-        updateWeather();
-        setInterval(updateWeather, 600000); 
+updateWeather();
+setInterval(updateWeather, 600000);
     </script>
 </body>
 </html>
