@@ -6,30 +6,67 @@
     <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
     <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
     <style>
-        body { margin: 0; padding: 0; background: #000; font-family: 'Courier New', monospace; color: #00ff41; }
-        #windy { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-        #overlay {
-            position: absolute; top: 15px; left: 15px; z-index: 10;
-            background: rgba(0, 0, 0, 0.8); padding: 15px; border-radius: 10px;
-            width: 350px; border: 1px solid #333;
-        }
-        .scroll-container { width: 100%; overflow: hidden; white-space: nowrap; margin: 10px 0; }
-        .scroll-text { display: inline-block; animation: marquee 20s linear infinite; font-size: 1.2em; }
-        @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-        .label { color: #fff; font-size: 0.8em; display: block; border-bottom: 1px solid #444; }
-    </style>
+    body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+    #windy { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+    
+    #overlay {
+        position: absolute; top: 15px; left: 15px; z-index: 10;
+        background: rgba(0, 0, 0, 0.85); padding: 15px; border-radius: 10px;
+        width: 380px; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,1);
+    }
+
+    .label { color: #fff; font-size: 0.75em; display: block; border-bottom: 1px solid #444; margin-bottom: 5px; }
+
+    /* METAR: Horizontal Scroll */
+    .metar-container {
+        width: 100%; overflow: hidden; white-space: nowrap; margin-bottom: 15px;
+    }
+    .metar-text {
+        display: inline-block; color: #00ff41; font-size: 1.1em; font-weight: bold;
+        animation: marquee-left 15s linear infinite;
+        padding-left: 100%; /* Starts off-screen to the right */
+    }
+
+    /* TAF: Vertical Scroll */
+    .taf-container {
+        height: 80px; /* Fixed height to allow scrolling inside */
+        overflow: hidden; position: relative; border-left: 2px solid #00ff41; padding-left: 10px;
+    }
+    .taf-text {
+        position: absolute; color: #00ff41; font-size: 1.0em; width: 100%;
+        animation: scroll-down 12s linear infinite;
+        white-space: pre-wrap; /* Allows text to wrap into lines */
+    }
+
+    @keyframes marquee-left {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-100%); }
+    }
+
+    @keyframes scroll-down {
+        0% { transform: translateY(-100%); }
+        100% { transform: translateY(100%); }
+    }
+
+    #time { font-size: 0.6em; color: #666; margin-top: 10px; text-align: right; }
+</style>
 </head>
 <body>
 
     <div id="windy"></div>
     
     <div id="overlay">
-        <span class="label">METAR - EGNM</span>
-        <div class="scroll-container"><div id="metar" class="scroll-text">INITIALIZING...</div></div>
-        <span class="label">TAF - EGNM</span>
-        <div class="scroll-container"><div id="taf" class="scroll-text">INITIALIZING...</div></div>
-        <div style="font-size: 0.7em; color: #666;">Updated: <span id="time">--:--</span></div>
+    <span class="label">METAR - EGNM (Right to Left)</span>
+    <div class="metar-container">
+        <div id="metar" class="metar-text">FETCHING LATEST...</div>
     </div>
+
+    <span class="label">TAF - EGNM (Downward)</span>
+    <div class="taf-container">
+        <div id="taf" class="taf-text">FETCHING FORECAST...</div>
+    </div>
+    <div id="time">--:--</div>
+</div>
 
     <script>
         // 1. MAP CONFIGURATION
@@ -37,10 +74,22 @@
         const options = { key: WINDY_KEY, lat: 53.8659, lon: -1.6606, zoom: 8 };
 
         windyInit(options, windyAPI => {
-            const { store, broadcast } = windyAPI;
-            store.set('overlay', 'radar');
-            setTimeout(() => { broadcast.emit('p-play'); }, 2000);
-        });
+    const { store, broadcast } = windyAPI;
+    
+    // 1. Set your base layer (I used 'dark' here for contrast)
+    store.set('baseLayer', 'dark');
+    
+    // 2. Set the main colored overlay (Radar)
+    store.set('overlay', 'radar');
+    
+    // 3. ADD THIS LINE: This toggles the pressure isobars on top
+    store.set('isobars', true); 
+    
+    // 4. Auto-play the radar loop
+    setTimeout(() => { 
+        broadcast.emit('p-play'); 
+    }, 2000);
+});
 
         // 2. WEATHER CONFIGURATION (Independent of Map)
         async function updateWeather() {
