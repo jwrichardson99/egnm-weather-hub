@@ -67,40 +67,44 @@
 
             // 3. Aviation Data Logic
 			async function getAviationData() {
-    const icao = 'EGNM';
-    const apiKey = '5024b8a797df490cb1e783465b4ce8c3';
+    			const icao = 'EGNM';
+    			const apiKey = '5024b8a797df490cb1e783465b4ce8c3';
     
-    // We append the API key as a 'query string' (?x-api-key=...) 
-    // instead of a hidden header. This is often more reliable.
-    const metarUrl = `https://api.checkwx.com/metar/${icao}?x-api-key=${apiKey}`;
-    const tafUrl = `https://api.checkwx.com/taf/${icao}?x-api-key=${apiKey}`;
-
-    try {
-        // Fetch METAR
-        const mResp = await fetch(metarUrl);
-        const mData = await mResp.json();
-        
-        if (mData.data && mData.data.length > 0) {
-            document.getElementById('metar').innerText = mData.data[0];
-        }
-
-        // Fetch TAF
-        const tResp = await fetch(tafUrl);
-        const tData = await tResp.json();
-        
-        if (tData.data && tData.data.length > 0) {
-            document.getElementById('taf').innerText = tData.data[0];
-        }
-
-        document.getElementById('time').innerText = new Date().toLocaleTimeString();
-
-    } catch (e) {
-        console.error("Fetch Error:", e);
-        // If it still fails, it's definitely a CORS block. 
-        // We'll show a helpful message.
-        document.getElementById('metar').innerText = "CORS Blocked. Try opening in Incognito or checking API settings.";
-    }
-}
+			    // The AllOrigins proxy URL
+			    const proxy = 'https://api.allorigins.win/get?url=';
+			    
+			    // The CheckWX URL (using their v2 endpoint)
+			    const targetUrl = encodeURIComponent(`https://api.checkwx.com/v2/metar/${icao}/decoded?x-api-key=${apiKey}`);
+			
+			    try {
+			        const response = await fetch(`${proxy}${targetUrl}`);
+			        
+			        if (!response.ok) throw new Error('Network response was not ok');
+			        
+			        const wrapper = await response.json();
+			        // AllOrigins returns the data as a string inside 'contents', so we parse it
+			        const data = JSON.parse(wrapper.contents);
+			
+			        if (data && data.data && data.data.length > 0) {
+			            const station = data.data[0];
+			            
+			            // Raw METAR text
+			            document.getElementById('metar').innerText = station.raw_text || "No METAR found";
+			            
+			            // TAF text (CheckWX v2 station/decoded usually includes the TAF if available)
+			            // If TAF is separate, we show it here:
+			            document.getElementById('taf').innerText = station.taf || "TAF not in current report";
+			            
+			            document.getElementById('time').innerText = new Date().toLocaleTimeString();
+			        } else {
+			            document.getElementById('metar').innerText = "EGNM data not found in response.";
+			        }
+			
+			    } catch (e) {
+			        console.error("Fetch Error:", e);
+			        document.getElementById('metar').innerText = "Data error: " + e.message;
+			    }
+			}
 
             getAviationData();
             setInterval(getAviationData, 600000); // Refresh every 10 minutes
