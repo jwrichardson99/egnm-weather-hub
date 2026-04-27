@@ -28,14 +28,12 @@
 
         .label { color: #fff; font-size: 0.75em; display: block; border-bottom: 1px solid #444; margin-bottom: 5px; }
 
-        /* METAR: Horizontal */
         .metar-container { width: 100%; overflow: hidden; white-space: nowrap; margin-bottom: 15px; }
         .metar-text {
             display: inline-block; color: #00ff41; font-size: 1.1em; font-weight: bold;
             animation: marquee-left 18s linear infinite; padding-left: 100%;
         }
 
-        /* TAF: VERTICAL UPWARDS FIX */
         .taf-container { 
             height: 90px; 
             overflow: hidden; 
@@ -49,19 +47,11 @@
             font-size: 0.95em; 
             width: 100%;
             white-space: pre-wrap; 
-            animation: scroll-up 25s linear infinite; /* Adjusted speed for readability */
+            animation: scroll-up 25s linear infinite; 
         }
 
-        @keyframes marquee-left { 
-            0% { transform: translateX(0); } 
-            100% { transform: translateX(-100%); } 
-        }
-
-        /* UPWARD ANIMATION: Starts at bottom (100%) and moves to top (-100%) */
-        @keyframes scroll-up { 
-            0% { transform: translateY(100%); } 
-            100% { transform: translateY(-130%); } 
-        }
+        @keyframes marquee-left { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+        @keyframes scroll-up { 0% { transform: translateY(100%); } 100% { transform: translateY(-130%); } }
 
         #time { font-size: 0.6em; color: #666; margin-top: 10px; text-align: right; }
     </style>
@@ -88,83 +78,83 @@
     </div>
 
     <script>
-        // 1. Declare W_API at the very top so buttons can see it
-let W_API = null; 
+        let W_API = null; 
 
-const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
-const options = { 
-    key: WINDY_KEY, 
-    lat: 53.8659, 
-    lon: -1.6606, 
-    zoom: 8,
-    verbose: true // This helps debug in the console
-};
+        const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
+        const options = { 
+            key: WINDY_KEY, 
+            lat: 53.8659, 
+            lon: -1.6606, 
+            zoom: 8,
+            verbose: false 
+        };
 
-// Initialize Map
-windyInit(options, windyAPI => {
-    W_API = windyAPI; // Capturing the API globally
-    const { store, broadcast } = W_API;
-    
-    store.set('baseLayer', 'dark');
-    store.set('overlay', 'radar');
-    store.set('isolines', 'pressure'); 
-    
-    setTimeout(() => { 
-        broadcast.emit('p-play'); 
-    }, 3000);
-});
+        windyInit(options, windyAPI => {
+            W_API = windyAPI; 
+            const { store, broadcast } = W_API;
+            
+            store.set('baseLayer', 'dark');
+            store.set('overlay', 'radar');
+            store.set('isolines', 'none'); // Isobars off for Radar initially
+            
+            setTimeout(() => { 
+                broadcast.emit('p-play'); 
+            }, 3000);
+        });
 
-// 2. FIXED LAYER SWITCHER FUNCTION
-function changeLayer(layerName, btn) {
-    if (!W_API) {
-        console.error("Windy API not loaded yet!");
-        return;
-    }
+        function changeLayer(layerName, btn) {
+            if (!W_API) return;
+            const { store } = W_API;
 
-    const { store } = W_API;
+            // Map button keywords to exact Windy API internal names
+            const layerMapping = {
+                'radar': 'radar',
+                'wind': 'wind',
+                'temp': 'temp',
+                'satellite': 'satellite',
+                'rain': 'rain',
+                'clouds': 'clouds' 
+            };
 
-    // Set the overlay
-    store.set('overlay', layerName);
-    
-    // 2026 LOGIC: Radar and Satellite now disable forecast isolines by default.
-    // We try to force them back for other layers.
-    if (layerName === 'radar' || layerName === 'satellite') {
-        store.set('isolines', 'none'); 
-    } else {
-        store.set('isolines', 'pressure');
-    }
+            const targetLayer = layerMapping[layerName];
+            store.set('overlay', targetLayer);
+            
+            // Forecast layers allow isobars, real-time layers (Radar/Sat) usually do not
+            if (['wind', 'temp', 'rain', 'clouds'].includes(layerName)) {
+                store.set('isolines', 'pressure');
+            } else {
+                store.set('isolines', 'none');
+            }
 
-    // UI Feedback: Update buttons
-    document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-}
+            document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
 
-// 3. WEATHER DATA FETCH (Independent)
-async function updateWeather() {
-    const icao = 'EGNM';
-    const proxy = 'https://corsproxy.io/?';
-    const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
-    const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+        async function updateWeather() {
+            const icao = 'EGNM';
+            const proxy = 'https://corsproxy.io/?';
+            const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+            const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
 
-    try {
-        const [mR, tR] = await Promise.all([
-            fetch(proxy + encodeURIComponent(mUrl)),
-            fetch(proxy + encodeURIComponent(tUrl))
-        ]);
-        
-        const metarText = await mR.text();
-        const tafText = await tR.text();
+            try {
+                const [mR, tR] = await Promise.all([
+                    fetch(proxy + encodeURIComponent(mUrl)),
+                    fetch(proxy + encodeURIComponent(tUrl))
+                ]);
+                
+                const metarText = await mR.text();
+                const tafText = await tR.text();
 
-        if (metarText.length > 10) document.getElementById('metar').innerText = metarText.trim();
-        if (tafText.length > 10) document.getElementById('taf').innerText = tafText.trim();
-        document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
-    } catch (err) {
-        console.log("Weather update paused...");
-    }
-}
+                if (metarText.length > 5) document.getElementById('metar').innerText = metarText.trim();
+                if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
+                document.getElementById('time').innerText = "Update: " + new Date().toLocaleTimeString();
+            } catch (err) {
+                console.log("Weather update error");
+            }
+        }
 
-updateWeather();
-setInterval(updateWeather, 600000);
+        updateWeather();
+        setInterval(updateWeather, 600000); 
     </script>
 </body>
 </html>
