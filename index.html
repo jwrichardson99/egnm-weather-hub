@@ -118,19 +118,23 @@ function changeLayer(layerKey, btn) {
 
     const targetOverlay = layerNames[layerKey];
 
-    // 1. Switch the Overlay
-    store.set('overlay', targetOverlay);
-    
-    // 2. CRITICAL: If switching to forecast, force a model
-    if (['wind', 'temp', 'rain', 'clouds'].includes(layerKey)) {
-        store.set('product', 'ecmwf'); // The map needs this for Rain/Clouds to show
-        store.set('isolines', 'pressure');
-    } else {
-        // Radar and Satellite are 'observations', they don't have pressure isolines
+    // 1. FORCE THE MODEL FIRST
+    // Radar and Satellite use 'observation'. Everything else uses 'ecmwf'.
+    if (layerKey === 'radar' || layerKey === 'satellite') {
+        store.set('product', 'observation');
         store.set('isolines', 'none');
+    } else {
+        store.set('product', 'ecmwf'); 
+        store.set('isolines', 'pressure');
     }
 
-    // Update button UI
+    // 2. NOW SET THE OVERLAY
+    // We use a slight timeout to let the 'product' switch take hold
+    setTimeout(() => {
+        store.set('overlay', targetOverlay);
+    }, 50);
+
+    // 3. UI Update
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
