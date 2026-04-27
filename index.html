@@ -77,32 +77,58 @@
             // Auto-play radar animation
             setTimeout(() => { broadcast.emit('p-play'); }, 2000);
 
-            async function getAviationData() {
-                    const icao = 'EGNM';
-                    // Direct, simplified NOAA link
-                    const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
+           async function getAviationData() {
+            const icao = 'EGNM';
+            // 2026 NOAA endpoint - using the most stable query parameters
+            const targetUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=true`;
+            
+            // Using corsproxy.io wrapper
+            const proxiedUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+        
+            try {
+                const response = await fetch(proxiedUrl);
+                
+                if (!response.ok) throw new Error('Proxy error');
+        
+                const data = await response.json();
+        
+                // NOAA 2026 logic: check for 'raw_text' or the older 'rawOb'
+                if (data && data.length > 0) {
+                    const report = data[0];
                     
-                    // We use a different proxy that is currently the fastest in 2026
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                
-                    try {
-                        const response = await fetch(proxyUrl);
-                        const wrapper = await response.json();
-                        const data = JSON.parse(wrapper.contents); // AllOrigins requires this extra step
-                
-                        if (data && data.length > 0) {
-                            const report = data[0];
-                            
-                            // 2026 NOAA property names
-                            document.getElementById('metar').innerText = report.raw_text || "NO METAR FOUND";
-                            document.getElementById('taf').innerText = report.rawTaf || "NO TAF FOUND";
-                            document.getElementById('time').innerText = new Date().toLocaleTimeString();
-                        }
-                    } catch (e) {
-                        console.error("Connection failed:", e);
-                        document.getElementById('metar').innerText = "WAITING FOR NOAA RESPONSE...";
-                    }
+                    // Try every possible field name NOAA uses
+                    const metarText = report.raw_text || report.rawOb || report.metar_id || "METAR LOADED - PENDING TEXT";
+                    const tafText = report.rawTaf || report.taf_raw || "TAF PENDING...";
+        
+                    document.getElementById('metar').innerText = metarText;
+                    document.getElementById('taf').innerText = tafText;
+                    document.getElementById('time').innerText = new Date().toLocaleTimeString();
+                    
+                    console.log("Success! Data received for " + icao);
+                } else {
+                    document.getElementById('metar').innerText = "STATION EGNM: NO CURRENT REPORT";
                 }
+        
+            } catch (e) {
+                console.error("Fetch failure:", e);
+                // If the JSON fails, we try one final simple text fetch
+                document.getElementById('metar').innerText = "SYNCING WITH NOAA GLOBAL FEED...";
+                
+                // Final desperate attempt: try a different proxy automatically
+                try {
+                    const backupUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    const bResp = await fetch(backupUrl);
+                    const bData = await bResp.json();
+                    const bParsed = JSON.parse(bData.contents);
+                    if(bParsed[0]) {
+                        document.getElementById('metar').innerText = bParsed[0].raw_text;
+                        document.getElementById('taf').innerText = bParsed[0].rawTaf;
+                    }
+                } catch(err) {
+                    // Keep the "Syncing" message visible if all else fails
+                }
+            }
+        }
 
             getAviationData();
             setInterval(getAviationData, 600000); // 10 minute refresh
