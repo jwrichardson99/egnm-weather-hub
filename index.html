@@ -43,31 +43,45 @@
         });
 
         // 2. WEATHER CONFIGURATION (Independent of Map)
-        async function getAviationData() {
-            const icao = 'EGNM';
-            // Using a simple, direct text-based NOAA fallback
-            const url = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
-            const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        async function updateWeather() {
+    const icao = 'EGNM';
+    // 1. Using the absolute simplest text-only endpoint from NOAA
+    const target = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+    const tafTarget = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+    
+    // 2. Using a different, faster bridge for 2026: 'ThingProxy'
+    // This proxy is often less "crowded" than AllOrigins
+    const proxy = 'https://corsproxy.io/?';
 
-            try {
-                const response = await fetch(proxy);
-                const data = await response.json();
-                
-                if (data.contents) {
-                    document.getElementById('metar').innerText = data.contents.trim() || "NO DATA";
-                    document.getElementById('time').innerText = new Date().toLocaleTimeString();
-                    
-                    // Fetch TAF separately
-                    const tafUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
-                    const tResp = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(tafUrl)}`);
-                    const tData = await tResp.json();
-                    document.getElementById('taf').innerText = tData.contents.trim() || "NO TAF";
-                }
-            } catch (e) {
-                document.getElementById('metar').innerText = "RETRYING DATA...";
-                setTimeout(getAviationData, 5000);
-            }
+    try {
+        // Fetch METAR
+        const mResp = await fetch(proxy + encodeURIComponent(target));
+        const metarText = await mResp.text();
+
+        // Fetch TAF
+        const tResp = await fetch(proxy + encodeURIComponent(tafTarget));
+        const tafText = await tResp.text();
+
+        // Check if we actually got text back
+        if (metarText && metarText.length > 5) {
+            document.getElementById('metar').innerText = metarText.trim();
+            document.getElementById('taf').innerText = tafText.trim() || "TAF NOT AVAILABLE";
+            document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
+        } else {
+            throw new Error("Empty response");
         }
+
+    } catch (err) {
+        console.error("Connection error:", err);
+        // If the first proxy fails (522), try the emergency fallback bridge
+        const fallback = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`;
+        fetch(fallback).then(r => r.json()).then(j => {
+            document.getElementById('metar').innerText = j.contents;
+        }).catch(() => {
+            document.getElementById('metar').innerText = "NOAA SERVER BUSY - RETRYING...";
+        });
+    }
+}
 
         // Start weather loop immediately
         getAviationData();
