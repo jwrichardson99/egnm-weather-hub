@@ -114,29 +114,38 @@
             console.log("Windy Map Initialized at EGNM");
         });
 
-        // 2. Fetch NOAA Aviation Data
-        async function fetchAviationData() {
-            const icao = 'EGNM';
-            // Using a CORS proxy or direct NOAA link (Note: production apps should use a backend to avoid CORS issues)
-            const metarUrl = `https://tgftp.nws.noaa.gov/data/observations/metar/stations/${icao}.TXT`;
-            const tafUrl = `https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/${icao}.TXT`;
+        // 2. Fetch NOAA Aviation Data via CORS Proxy
+async function fetchAviationData() {
+    const icao = 'EGNM';
+    
+    // We use a CORS proxy to bypass the restriction
+    const proxy = 'https://corsproxy.io/?'; 
+    const metarUrl = `${proxy}https://tgftp.nws.noaa.gov/data/observations/metar/stations/${icao}.TXT`;
+    const tafUrl = `${proxy}https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/${icao}.TXT`;
 
-            try {
-                // Fetch METAR
-                const metarRes = await fetch(metarUrl);
-                const metarData = await metarRes.text();
-                document.getElementById('metar-text').innerText = metarData.split('\n').slice(1).join(' ');
+    try {
+        // Fetch METAR
+        const metarRes = await fetch(metarUrl);
+        if (!metarRes.ok) throw new Error('METAR Fetch Failed');
+        const metarData = await metarRes.text();
+        
+        // Clean up the string (removes the date line at the top)
+        const cleanMetar = metarData.split('\n').slice(1).join(' ').trim();
+        document.getElementById('metar-text').innerText = cleanMetar || "No METAR data available";
 
-                // Fetch TAF
-                const tafRes = await fetch(tafUrl);
-                const tafData = await tafRes.text();
-                document.getElementById('taf-text').innerText = tafData.split('\n').slice(1).join(' ');
-                
-            } catch (error) {
-                console.error("Error fetching aviation data:", error);
-                document.getElementById('metar-text').innerText = "Error loading METAR";
-            }
-        }
+        // Fetch TAF
+        const tafRes = await fetch(tafUrl);
+        if (!tafRes.ok) throw new Error('TAF Fetch Failed');
+        const tafData = await tafRes.text();
+        
+        const cleanTaf = tafData.split('\n').slice(1).join(' ').trim();
+        document.getElementById('taf-text').innerText = cleanTaf || "No TAF data available";
+        
+    } catch (error) {
+        console.error("Error fetching aviation data:", error);
+        document.getElementById('metar-text').innerText = "Connectivity error - check console";
+    }
+}
 
         // Initial fetch and set update interval (every 10 mins)
         fetchAviationData();
