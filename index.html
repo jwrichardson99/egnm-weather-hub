@@ -99,7 +99,7 @@ let weatherLayer;
 // 1. Initialize Map
 const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+L.tileLayerL.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
 // 2. Optimized Map Layer Function
@@ -111,11 +111,12 @@ function updateMapLayer(layerName, element) {
     // Added '&time=current' - Open-Meteo tiles often need this for live data
     const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/${layerName}/{z}/{x}/{y}.png?time=current`;
     
-    weatherLayer = L.tileLayer(tileUrl, {
-        opacity: 0.5,
-        maxZoom: 12,
-        zIndex: 100 // Ensures it sits above the base map
-    }).addTo(map);
+		weatherLayer = L.tileLayer(tileUrl, {
+			opacity: 0.6,
+			transparent: true,
+			zIndex: 1000,
+			crossOrigin: true // This tells the browser it's okay to load these tiles
+		}).addTo(map);
 
     // Force the map to refresh the tiles
     weatherLayer.redraw();
