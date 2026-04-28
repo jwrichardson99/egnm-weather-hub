@@ -80,56 +80,83 @@
     <script>
         let W_API = null;
 
-// Using your provided Pro/Plugin Key
+// Using your Pro/Plugin Key
 const WINDY_KEY = 'JrOUxhIacyvx0kaURev826DuikZCUUmC'; 
 
 const options = {
     key: WINDY_KEY,
     lat: 53.8659,
     lon: -1.6606,
-    zoom: 6,
-    verbose: true // This will help us see exactly why a layer fails in the console
+    zoom: 8
 };
 
+// Initialize Map
 windyInit(options, windyAPI => {
     W_API = windyAPI;
     const { store, broadcast } = W_API;
 
     store.set('baseLayer', 'dark');
     
-    // Set initial view to Radar
-    changeLayer('radar', document.querySelector('.layer-btn'));
+    // Start with radar
+    store.set('overlay', 'radar');
 
     broadcast.once('redrawFinished', () => {
-        setTimeout(() => broadcast.emit('p-play'), 2000);
+        setTimeout(() => {
+            broadcast.emit('p-play');
+        }, 2000);
     });
 });
 
+// COMPLETELY CLEANED SWITCHER
 function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // 1. UI Update (do this first so the user sees a response)
-    document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
-    if(btn) btn.classList.add('active');
+    // 1. Identify if it's a forecast layer
+    const isForecast = (layerKey !== 'radar' && layerKey !== 'satellite');
 
-    // 2. Handle Radar/Satellite specifically
-    if (layerKey === 'radar' || layerKey === 'satellite') {
-        // For many Windy API versions, you don't set product to 'observation'
-        // You just set the overlay and the API handles the rest.
-        store.set('overlay', layerKey);
-        store.set('isolines', 'none');
-    } else {
-        // 3. Handle Forecast layers (Wind, Temp, etc.)
-        store.set('product', 'ecmwf'); 
-        store.set('overlay', layerKey);
+    // 2. Set the Overlay directly
+    // This is the most stable way to switch
+    store.set('overlay', layerKey);
+
+    // 3. Only set product/isolines for forecast models (Wind, Temp, etc)
+    if (isForecast) {
+        store.set('product', 'ecmwf');
         store.set('isolines', 'pressure');
+    } else {
+        store.set('isolines', 'none');
     }
 
-    // CRITICAL: We removed the airspaces line entirely because it is causing 
-    // the "Uncaught Error" which stops your code from running.
+    // UI Update
+    document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
 }
 
-// METAR/TAF logic stays the same...
+// WEATHER DATA FETCH (METAR/TAF)
+async function updateWeather() {
+    const icao = 'EGNM';
+    const proxy = 'https://corsproxy.io/?';
+    const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
+    const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
+
+    try {
+        const [mR, tR] = await Promise.all([
+            fetch(proxy + encodeURIComponent(mUrl)),
+            fetch(proxy + encodeURIComponent(tUrl))
+        ]);
+
+        const metarText = await mR.text();
+        const tafText = await tR.text();
+
+        if (metarText.length > 5) document.getElementById('metar').innerText = metarText.trim();
+        if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
+        document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
+    } catch (err) {
+        console.warn("Feed refresh pending...");
+    }
+}
+
+updateWeather();
+setInterval(updateWeather, 600000);
 </body>
 </html>
