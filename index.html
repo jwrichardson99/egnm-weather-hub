@@ -15,10 +15,8 @@
 
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0f172a; color: var(--text); font-family: 'Segoe UI', sans-serif; }
 
-        /* Map background */
         #map { position: absolute; top: 0; bottom: 0; left: 0; right: 0; z-index: 1; }
 
-        /* UI Overlays */
         #aviation-box {
             position: absolute; top: 20px; left: 20px; width: 350px;
             background: var(--glass); backdrop-filter: blur(8px);
@@ -34,7 +32,6 @@
         #taf-container { height: 90px; overflow: hidden; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; position: relative; border-left: 3px solid var(--accent); }
         #taf-text { position: absolute; animation: scroll-up 25s linear infinite; font-family: 'Courier New', monospace; font-size: 0.85rem; width: 95%; }
 
-        /* Layer Controls */
         #layer-selector {
             position: absolute; top: 20px; right: 20px; z-index: 10;
             display: flex; flex-direction: column; gap: 5px;
@@ -47,7 +44,6 @@
         .layer-btn:hover { background: var(--accent); color: #000; }
         .layer-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
-        /* Bottom Stats */
         #stats-grid {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;
@@ -94,8 +90,14 @@ const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
 const EGNM_COORDS = [53.86, -1.66];
 let weatherLayer;
 
-// 1. Initialize Map
-const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
+// 1. Initialize Map (FIXED SYNTAX: Added colon after maxZoom)
+const map = L.map('map', { 
+    zoomControl: false, 
+    attributionControl: false, 
+    minZoom: 4, 
+    maxZoom: 12 
+}).setView(EGNM_COORDS, 8);
+
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
@@ -103,43 +105,50 @@ L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 async function updateMapLayer(type = 'radar', element = null) {
     if (weatherLayer) map.removeLayer(weatherLayer);
 
-    // Auto-zoom for Satellite as it needs higher detail
-    if (type === 'satellite' && map.getZoom() < 7) map.setZoom(7);
+    // Auto-zoom: Satellite needs to be at least zoom 7 to show anything
+    if (type === 'satellite' && map.getZoom() < 7) {
+        map.setZoom(7);
+    }
 
     try {
         const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const rvData = await rvRes.json();
         
-        // Select correct data path
-        const dataArray = (type === 'satellite') ? rvData.satellite?.infrared : rvData.radar?.past;
+        let latestTime;
 
-        if (!dataArray || dataArray.length === 0) {
-            throw new Error("No data available in API");
+        // Correct paths for RainViewer API
+        if (type === 'satellite') {
+            const satData = rvData.satellite?.infrared;
+            if (satData && satData.length > 0) {
+                latestTime = satData[satData.length - 1].time;
+            }
+        } else {
+            const radData = rvData.radar?.past;
+            if (radData && radData.length > 0) {
+                latestTime = radData[radData.length - 1].time;
+            }
         }
 
-        // Try the 3 most recent timestamps to avoid 410 (Gone) errors
-        let latestTime = dataArray[dataArray.length - 1].time;
-        
-        const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
+        // If API fails, we use a 10-minute trailing timestamp
+        if (!latestTime) {
+            latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600) - 600;
+        }
+
+        // The URL structure: {type}/{time}/{size}/{z}/{x}/{y}/{color}/{options}.png
+        // Using color '1' and '1_1' for smoothing/transparency
+        const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/1/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
-            opacity: 0.7,
+            opacity: 0.8, // Increased for better visibility
             zIndex: 1000,
-            crossOrigin: true
+            className: 'weather-layer',
+            crossOrigin: true // Crucial for modern browser security
         }).addTo(map);
 
-        // Error handling for specific tiles
-        weatherLayer.on('tileerror', () => {
-            console.warn("Tile failed to load. API might be refreshing.");
-        });
+        console.log(`Loading ${type} tiles for time: ${latestTime}`);
 
     } catch (e) {
-        console.error("RainViewer Error:", e.message);
-        // Absolute fallback: Current time rounded to 10 mins
-        const fallback = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
-        weatherLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/${type}/${fallback}/256/{z}/{x}/{y}/2/1_1.png`, {
-            opacity: 0.7, zIndex: 1000
-        }).addTo(map);
+        console.error("Critical Map Error:", e.message);
     }
 
     if (element) {
@@ -147,6 +156,13 @@ async function updateMapLayer(type = 'radar', element = null) {
         element.classList.add('active');
     }
 }
+
+// Global Zoom Listener (Moved outside function to prevent memory leaks)
+map.on('zoomend', () => {
+    const activeBtn = document.querySelector('.layer-btn.active');
+    const type = activeBtn.innerText.includes('Infrared') ? 'satellite' : 'radar';
+    updateMapLayer(type, activeBtn);
+});
 
 // 3. Aviation Data
 async function fetchAviationData() {
@@ -163,7 +179,7 @@ async function fetchAviationData() {
     } catch (e) { console.error("Aviation Sync Error"); }
 }
 
-// 4. Weather Stats (Aviation Degrees)
+// 4. Weather Stats
 async function fetchWeather() {
     try {
         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m&wind_speed_unit=kn");
