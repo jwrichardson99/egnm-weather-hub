@@ -78,9 +78,10 @@
     </div>
 
     <script>
-        let W_API = null;
+        <script>
+let W_API = null;
 
-// Using your Pro/Plugin Key
+// Your Pro/Plugin Key
 const WINDY_KEY = 'JrOUxhIacyvx0kaURev826DuikZCUUmC'; 
 
 const options = {
@@ -97,66 +98,71 @@ windyInit(options, windyAPI => {
 
     store.set('baseLayer', 'dark');
     
-    // Start with radar
-    store.set('overlay', 'radar');
+    // Use 'rain' as a safe default starting layer to ensure the map loads
+    store.set('overlay', 'rain');
+    store.set('product', 'ecmwf');
 
     broadcast.once('redrawFinished', () => {
         setTimeout(() => {
             broadcast.emit('p-play');
-        }, 2000);
+        }, 1000);
     });
 });
 
-// COMPLETELY CLEANED SWITCHER
 function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // 1. Identify if it's a forecast layer
-    const isForecast = (layerKey !== 'radar' && layerKey !== 'satellite');
-
-    // 2. Set the Overlay directly
-    // This is the most stable way to switch
-    store.set('overlay', layerKey);
-
-    // 3. Only set product/isolines for forecast models (Wind, Temp, etc)
-    if (isForecast) {
-        store.set('product', 'ecmwf');
-        store.set('isolines', 'pressure');
-    } else {
-        store.set('isolines', 'none');
-    }
-
-    // UI Update
+    // 1. UI Update
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     if(btn) btn.classList.add('active');
+
+    // 2. Logic to handle Forecast vs Observation
+    if (layerKey === 'radar' || layerKey === 'satellite') {
+        // Try setting overlay directly first. 
+        // If blank, your key might require product: 'observation'
+        store.set('overlay', layerKey);
+        store.set('isolines', 'none');
+    } else {
+        store.set('product', 'ecmwf');
+        store.set('overlay', layerKey);
+        store.set('isolines', 'pressure');
+    }
 }
 
-// WEATHER DATA FETCH (METAR/TAF)
+// FIXED WEATHER DATA FETCH
 async function updateWeather() {
     const icao = 'EGNM';
-    const proxy = 'https://corsproxy.io/?';
+    // Using a different proxy approach to ensure reliability
     const mUrl = `https://aviationweather.gov/api/data/metar?ids=${icao}`;
     const tUrl = `https://aviationweather.gov/api/data/taf?ids=${icao}`;
 
     try {
-        const [mR, tR] = await Promise.all([
-            fetch(proxy + encodeURIComponent(mUrl)),
-            fetch(proxy + encodeURIComponent(tUrl))
+        const [mRes, tRes] = await Promise.all([
+            fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(mUrl)}`),
+            fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(tUrl)}`)
         ]);
 
-        const metarText = await mR.text();
-        const tafText = await tR.text();
+        const mData = await mRes.json();
+        const tData = await tRes.json();
 
-        if (metarText.length > 5) document.getElementById('metar').innerText = metarText.trim();
-        if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
+        if (mData.contents) {
+            document.getElementById('metar').innerText = mData.contents.trim() || "NO DATA";
+        }
+        if (tData.contents) {
+            document.getElementById('taf').innerText = tData.contents.trim() || "NO DATA";
+        }
+        
         document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
     } catch (err) {
-        console.warn("Feed refresh pending...");
+        console.error("Weather update failed:", err);
+        document.getElementById('metar').innerText = "FETCH ERROR - RETRYING...";
     }
 }
 
+// Initial calls
 updateWeather();
 setInterval(updateWeather, 600000);
+</script>
 </body>
 </html>
