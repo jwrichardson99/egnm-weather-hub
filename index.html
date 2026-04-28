@@ -109,34 +109,31 @@ function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    const layerNames = {
-        'radar': 'radar',
-        'wind': 'wind',
-        'temp': 'temp',
-        'satellite': 'satellite',
-        'rain': 'rain',
-        'clouds': 'clouds'
-    };
+    // 1. Identify if the target is an "Observation" (Real-time) or "Forecast"
+    const isObservation = (layerKey === 'radar' || layerKey === 'satellite');
 
-    const targetOverlay = layerNames[layerKey];
-
-    // 1. Logic for Engine Switch
-    if (layerKey === 'radar' || layerKey === 'satellite') {
-        store.set('product', 'observation');
-        store.set('isolines', 'none');
-    } else {
-        store.set('product', 'ecmwf'); 
-        store.set('isolines', 'pressure');
+    // 2. Set the product first
+    // 'observation' is for Radar/Satellite. 'ecmwf' is the default for weather layers.
+    const targetProduct = isObservation ? 'observation' : 'ecmwf';
+    
+    if (store.get('product') !== targetProduct) {
+        store.set('product', targetProduct);
     }
 
-    // 2. Set the Overlay
-    store.set('overlay', targetOverlay);
-    
-    // 3. FORCE AIRSPACE OVERLAY (VFR Map)
-    // We set it to true again to ensure it stays visible on the new layer
+    // 3. Apply the specific overlay
+    store.set('overlay', layerKey);
+
+    // 4. Handle additional aesthetics based on the layer
+    if (isObservation) {
+        store.set('isolines', 'none');
+    } else {
+        store.set('isolines', 'pressure'); // Adds pressure lines to forecast layers
+    }
+
+    // 5. Force Airspace visibility persistence
     store.set('airspaces', true); 
 
-    // UI Update
+    // UI Update: Toggle active class
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
