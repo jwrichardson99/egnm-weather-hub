@@ -93,9 +93,10 @@
 
     <script>
         // 1. Constants & Configuration
+// 1. Configuration
 const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
 const EGNM_COORDS = [53.86, -1.66];
-let weatherLayer;
+let weatherLayer; // Keeps track of the current weather overlay
 
 // 2. Initialize Map
 const map = L.map('map', { 
@@ -103,46 +104,36 @@ const map = L.map('map', {
     attributionControl: false 
 }).setView(EGNM_COORDS, 8);
 
-// Base Map (This provider is reliable for CORS)
+// Reliable Base Layer (CartoDB is very CORS-friendly)
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
 // Add Marker for EGNM
 L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
 // 3. Robust Layer Switcher
-async function updateMapLayer(layerType, element) {
-    if (weatherLayer) map.removeLayer(weatherLayer);
-
-    let tileUrl;
-
-    if (layerType === 'precipitation') {
-        // RainViewer is much more reliable for GitHub Pages (No CORS/CORB issues)
-        try {
-            const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-            const rvData = await rvRes.json();
-            const latest = rvData.radar.past[rvData.radar.past.length - 1].time;
-            tileUrl = `https://tilecache.rainviewer.com/v2/radar/${latest}/256/{z}/{x}/{y}/2/1_1.png`;
-        } catch (e) {
-            console.warn("RainViewer failed, falling back to Open-Meteo");
-            tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/precipitation/{z}/{x}/{y}.png`;
-        }
-    } else {
-        // Standard Open-Meteo Layers
-        tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerType}/{z}/{x}/{y}.png`;
+function updateMapLayer(layerType, element) {
+    // Remove the old layer if it exists
+    if (weatherLayer) {
+        map.removeLayer(weatherLayer);
     }
+
+    // Direct URL for Open-Meteo tiles. 
+    // Using 'best_match' ensures the server picks the most available model.
+    const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerType}/{z}/{x}/{y}.png`;
 
     weatherLayer = L.tileLayer(tileUrl, {
         opacity: 0.6,
         zIndex: 1000,
-        crossOrigin: true // Crucial fix for the CORS issues in your screenshot
+        // The key fix for your CORS errors:
+        crossOrigin: true 
     }).addTo(map);
 
-    // Update UI buttons
+    // Update UI button highlights
     document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
     if (element) element.classList.add('active');
 }
 
-// 4. Data Fetching Functions
+// 4. Data Fetching (METAR/Stats)
 async function fetchAviationData() {
     try {
         const headers = { "X-API-Key": CHECKWX_API_KEY };
@@ -170,7 +161,7 @@ async function fetchWeather() {
     } catch (e) { console.error("Weather Data Error:", e); }
 }
 
-// Initial Run
+// Initial Load
 updateMapLayer('precipitation');
 fetchAviationData();
 fetchWeather();
