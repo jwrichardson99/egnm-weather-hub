@@ -92,62 +92,49 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-// 1. Configuration
+        // 1. Constants & Configuration
 const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
 const EGNM_COORDS = [53.86, -1.66];
-let weatherLayer; // Global variable to store the current weather overlay
+let weatherLayer;
 
-// 2. Initialize Map
-const map = L.map('map', { 
-    zoomControl: false, 
-    attributionControl: false 
-}).setView(EGNM_COORDS, 8);
+// 1. Initialize Map
+const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
 
-// Use a highly compatible base layer
+// Base Map (Dark Theme)
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-// Add Marker for EGNM
 L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
-// 3. Robust Layer Switcher
-function updateMapLayer(layerName, element) {
-    if (weatherLayer) {
-        map.removeLayer(weatherLayer);
+// 2. RainViewer Layer Switcher
+async function updateMapLayer(type, element) {
+    if (weatherLayer) map.removeLayer(weatherLayer);
+
+    try {
+        // We fetch the latest radar time from RainViewer to avoid 404 errors
+        const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        const rvData = await rvRes.json();
+        const latestTime = rvData.radar.past[rvData.radar.past.length - 1].time;
+
+        // Constructing the URL specifically for RainViewer
+        // 0 = no smoothing, 1_1 = color scheme
+        const tileUrl = `https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
+
+        weatherLayer = L.tileLayer(tileUrl, {
+            opacity: 0.6,
+            zIndex: 1000
+        }).addTo(map);
+    } catch (e) {
+        console.error("RainViewer Layer Error:", e);
     }
 
-    // Direct Open-Meteo Tile URL using 'best_match'
-    // This reduces 404 errors by letting the server choose the best model available
-    const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerName}/{z}/{x}/{y}.png`;
-
-    weatherLayer = L.tileLayer(tileUrl, {
-        opacity: 0.6,
-        zIndex: 1000,
-        // CRITICAL: Tells the browser this is a cross-origin request
-        crossOrigin: true 
-    }).addTo(map);
-
-    // Update button highlights
+    // UI Updates
     document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
     if (element) element.classList.add('active');
 }
 
-// 4. Data Fetching
-async function fetchAviationData() {
-    try {
-        const headers = { "X-API-Key": CHECKWX_API_KEY };
-        // Fetching directly to avoid the failing 522 proxy errors
-        const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
-        const metarJson = await metarRes.json();
-        if (metarJson.data) document.getElementById('metar-text').innerText = metarJson.data[0];
-
-        const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
-        const tafJson = await tafRes.json();
-        if (tafJson.data) document.getElementById('taf-text').innerText = tafJson.data[0];
-    } catch (e) { console.error("Aviation error:", e); }
-}
-
+// 3. Stats Data (Keeping Open-Meteo for the numbers)
 async function fetchWeather() {
     try {
+        // Direct call to bypass the failing allorigins proxy
         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
         const data = await res.json();
         const cur = data.current;
@@ -157,12 +144,13 @@ async function fetchWeather() {
         document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
         document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
         document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
-    } catch (e) { console.error("Weather error:", e); }
+    } catch (e) {
+        console.error("Stats Error:", e);
+    }
 }
 
-// Initial Run
+// Initial Load
 updateMapLayer('precipitation');
-fetchAviationData();
 fetchWeather();
 		setInterval(fetchAviationData, 300000);
 		setInterval(fetchWeather, 300000);
