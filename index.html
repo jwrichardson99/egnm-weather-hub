@@ -126,53 +126,59 @@
     </div>
 
     <script>
-        // Replace your existing URL variables with these:
-const PROXY = "https://corsproxy.io/?";
+        // --- CONFIGURATION ---
 const METAR_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/stations/EGNM.TXT";
 const TAF_URL = "https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/EGNM.TXT";
+const WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m";
+
+// Using AllOrigins with a wrapper to avoid 403 Forbidden issues
+const getProxiedData = async (url) => {
+    const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}&t=${Date.now()}`);
+    if (!response.ok) throw new Error('Network response was not ok');
+    const json = await response.json();
+    return json.contents; // AllOrigins wraps the text in a 'contents' property
+};
 
 async function fetchAviationData() {
     try {
-        // We add a timestamp to the end to prevent the proxy from serving a cached error
-        const cacheBuster = `&t=${new Date().getTime()}`;
-        
-        const metarRes = await fetch(PROXY + encodeURIComponent(METAR_URL) + cacheBuster);
-        if (!metarRes.ok) throw new Error('METAR Fetch Failed');
-        const metarData = await metarRes.text();
-        document.getElementById('metar-text').innerText = metarData.replace(/\n/g, ' ');
+        const metarData = await getProxiedData(METAR_URL);
+        document.getElementById('metar-text').innerText = metarData.replace(/\n/g, ' ').trim();
 
-        const tafRes = await fetch(PROXY + encodeURIComponent(TAF_URL) + cacheBuster);
-        if (!tafRes.ok) throw new Error('TAF Fetch Failed');
-        const tafData = await tafRes.text();
-        document.getElementById('taf-text').innerText = tafData;
+        const tafData = await getProxiedData(TAF_URL);
+        document.getElementById('taf-text').innerText = tafData.trim();
         
     } catch (e) {
         console.error("Aviation data error:", e);
-        document.getElementById('metar-text').innerText = "Aviation Data Temporarily Unavailable";
+        document.getElementById('metar-text').innerText = "Aviation Data Syncing... (Check back in a moment)";
     }
 }
 
-        async function fetchWeather() {
-            try {
-                const res = await fetch(WEATHER_URL);
-                const data = await res.json();
-                const cur = data.current;
+async function fetchWeather() {
+    try {
+        const res = await fetch(WEATHER_URL);
+        if (!res.ok) throw new Error('Weather API error');
+        const data = await res.json();
+        const cur = data.current;
 
-                document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
-                document.getElementById('precip').innerText = `${cur.precipitation} mm`;
-                document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
-                document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
-                document.getElementById('wind').innerText = `${cur.wind_speed_10m} km/h`;
-            } catch (e) {
-                console.error("Weather data error:", e);
-            }
-        }
+        document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
+        document.getElementById('precip').innerText = `${cur.precipitation} mm`;
+        document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
+        document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
+        document.getElementById('wind').innerText = `${cur.wind_speed_10m} km/h`;
+    } catch (e) {
+        console.error("Weather data error:", e);
+    }
+}
 
-        // Initialize
-        fetchAviationData();
-        fetchWeather();
-        // Refresh every 5 minutes
-        setInterval(() => { fetchAviationData(); fetchWeather(); }, 300000);
+// --- INITIALIZE ---
+fetchAviationData();
+fetchWeather();
+
+// Refresh every 5 minutes
+setInterval(() => { 
+    fetchAviationData(); 
+    fetchWeather(); 
+}, 300000);
     </script>
 </body>
 </html>
