@@ -99,41 +99,27 @@ const map = L.map('map', { zoomControl: false, attributionControl: false }).setV
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
-// 2. RainViewer Integration (Fixed "Time Data Missing" Logic)
+// 2. Hardened RainViewer Logic
 async function updateMapLayer(type = 'radar', element = null) {
     if (weatherLayer) map.removeLayer(weatherLayer);
 
-    // Satellite imagery often requires a closer zoom level to display correctly
-    if (type === 'satellite' && map.getZoom() < 6) {
-        map.setZoom(7); 
-    }
+    // Auto-zoom for Satellite as it needs higher detail
+    if (type === 'satellite' && map.getZoom() < 7) map.setZoom(7);
 
     try {
         const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const rvData = await rvRes.json();
         
-        let latestTime = null;
+        // Select correct data path
+        const dataArray = (type === 'satellite') ? rvData.satellite?.infrared : rvData.radar?.past;
 
-        // SAFE PATH CHECKING: Avoids the "undefined" crash on line 72
-        if (type === 'satellite') {
-            const infrared = rvData?.satellite?.infrared;
-            if (infrared && infrared.length > 0) {
-                latestTime = infrared[infrared.length - 1].time;
-            }
-        } else {
-            const past = rvData?.radar?.past;
-            if (past && past.length > 0) {
-                latestTime = past[past.length - 1].time;
-            }
+        if (!dataArray || dataArray.length === 0) {
+            throw new Error("No data available in API");
         }
 
-        // FALLBACK: If API is empty, calculate a fresh 10-minute block
-        if (!latestTime) {
-            latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
-            console.log(`Using fallback timestamp: ${latestTime}`);
-        }
-
-        // Construct URL with high-quality settings (the "2/1_1.png" at the end)
+        // Try the 3 most recent timestamps to avoid 410 (Gone) errors
+        let latestTime = dataArray[dataArray.length - 1].time;
+        
         const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
@@ -142,8 +128,18 @@ async function updateMapLayer(type = 'radar', element = null) {
             crossOrigin: true
         }).addTo(map);
 
+        // Error handling for specific tiles
+        weatherLayer.on('tileerror', () => {
+            console.warn("Tile failed to load. API might be refreshing.");
+        });
+
     } catch (e) {
-        console.error("Layer Load Error:", e.message);
+        console.error("RainViewer Error:", e.message);
+        // Absolute fallback: Current time rounded to 10 mins
+        const fallback = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
+        weatherLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/${type}/${fallback}/256/{z}/{x}/{y}/2/1_1.png`, {
+            opacity: 0.7, zIndex: 1000
+        }).addTo(map);
     }
 
     if (element) {
@@ -152,7 +148,7 @@ async function updateMapLayer(type = 'radar', element = null) {
     }
 }
 
-// 3. Aviation Data (FIXES THE REFERENCE ERROR)
+// 3. Aviation Data
 async function fetchAviationData() {
     try {
         const headers = { "X-API-Key": CHECKWX_API_KEY };
@@ -162,41 +158,30 @@ async function fetchAviationData() {
         ]);
         const mData = await mRes.json();
         const tData = await tRes.json();
-
-        document.getElementById('metar-text').innerText = mData.data?.[0] || "No METAR Available";
-        document.getElementById('taf-text').innerText = tData.data?.[0] || "No TAF Available";
-    } catch (e) { 
-        console.error("Aviation Data Error:", e);
-        document.getElementById('metar-text').innerText = "Sync Error";
-    }
+        document.getElementById('metar-text').innerText = mData.data?.[0] || "METAR Unavailable";
+        document.getElementById('taf-text').innerText = tData.data?.[0] || "TAF Unavailable";
+    } catch (e) { console.error("Aviation Sync Error"); }
 }
 
-// 4. Stats Data (Including Degrees for Wind)
+// 4. Weather Stats (Aviation Degrees)
 async function fetchWeather() {
     try {
         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m&wind_speed_unit=kn");
         const data = await res.json();
         const cur = data.current;
-        
         document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
         document.getElementById('precip').innerText = `${cur.precipitation} mm`;
         document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
         document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
-        
-        // Finalized wind display: [Degrees]° @ [Speed] kt
         document.getElementById('wind').innerText = `${cur.wind_direction_10m}° @ ${cur.wind_speed_10m} kt`;
-    } catch (e) { 
-        console.error("Stats Fetch Error:", e); 
-    }
+    } catch (e) { console.error("Stats Error"); }
 }
 
-// 5. Initial Execution Sequence
-// We define functions first, then run them to ensure no ReferenceErrors occur
+// Initial Run
 updateMapLayer('radar');
 fetchAviationData();
 fetchWeather();
 
-// Automatic Refresh (Every 5 minutes)
 setInterval(fetchAviationData, 300000);
 setInterval(fetchWeather, 300000);
     </script>
