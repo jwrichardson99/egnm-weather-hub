@@ -78,62 +78,50 @@
     </div>
 
     <script>
-        let W_API = null; 
+        let W_API = null;
 
 const WINDY_KEY = 'EMwvN9THbhR1U1SJHzsqdHAmonM0Nhne';
-const options = { 
-    key: WINDY_KEY, 
-    lat: 53.8659, 
-    lon: -1.6606, 
-    zoom: 8 
+const options = {
+    key: WINDY_KEY,
+    lat: 53.8659,
+    lon: -1.6606,
+    zoom: 8
 };
 
 // Initialize Map
 windyInit(options, windyAPI => {
-    W_API = windyAPI; 
+    W_API = windyAPI;
     const { store, broadcast } = W_API;
-    
+
     store.set('baseLayer', 'dark');
     store.set('overlay', 'radar');
-    
-    // Initial Airspace Activation
-    store.set('airspaces', true); 
 
-    setTimeout(() => { 
-        broadcast.emit('p-play'); 
-    }, 3000);
+    // Wait for the map to be fully loaded before starting the animation
+    broadcast.once('redrawFinished', () => {
+        setTimeout(() => {
+            broadcast.emit('p-play');
+        }, 1000);
+    });
 });
 
-// THE FIXED SWITCHER WITH AIRSPACE PERSISTENCE
 function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // 1. Identify if the target is an "Observation" (Real-time) or "Forecast"
-    const isObservation = (layerKey === 'radar' || layerKey === 'satellite');
+    // 1. Determine Product
+    // Use 'observation' for radar/satellite, otherwise default to forecast models
+    const isObs = (layerKey === 'radar' || layerKey === 'satellite');
+    const targetProduct = isObs ? 'observation' : 'ecmwf';
 
-    // 2. Set the product first
-    // 'observation' is for Radar/Satellite. 'ecmwf' is the default for weather layers.
-    const targetProduct = isObservation ? 'observation' : 'ecmwf';
-    
-    if (store.get('product') !== targetProduct) {
-        store.set('product', targetProduct);
-    }
-
-    // 3. Apply the specific overlay
+    // 2. Execute changes
+    // We set overlay first, then product to help the renderer
     store.set('overlay', layerKey);
+    store.set('product', targetProduct);
 
-    // 4. Handle additional aesthetics based on the layer
-    if (isObservation) {
-        store.set('isolines', 'none');
-    } else {
-        store.set('isolines', 'pressure'); // Adds pressure lines to forecast layers
-    }
+    // 3. Optional: Add pressure lines only for forecast layers
+    store.set('isolines', isObs ? 'none' : 'pressure');
 
-    // 5. Force Airspace visibility persistence
-    store.set('airspaces', true); 
-
-    // UI Update: Toggle active class
+    // 4. UI Update
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
@@ -150,7 +138,7 @@ async function updateWeather() {
             fetch(proxy + encodeURIComponent(mUrl)),
             fetch(proxy + encodeURIComponent(tUrl))
         ]);
-        
+
         const metarText = await mR.text();
         const tafText = await tR.text();
 
@@ -158,7 +146,7 @@ async function updateWeather() {
         if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
         document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
     } catch (err) {
-        console.log("Feed interrupted...");
+        console.error("Weather update failed:", err);
     }
 }
 
