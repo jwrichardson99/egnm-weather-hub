@@ -103,37 +103,47 @@ L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 async function updateMapLayer(type = 'radar', element = null) {
     if (weatherLayer) map.removeLayer(weatherLayer);
 
+    // Satellite imagery often requires a closer zoom level to display correctly
+    if (type === 'satellite' && map.getZoom() < 6) {
+        map.setZoom(7); 
+    }
+
     try {
         const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const rvData = await rvRes.json();
         
         let latestTime = null;
 
-        // 1. Determine the correct array based on type
-        const dataArray = (type === 'satellite') ? rvData.satellite?.infrared : rvData.radar?.past;
-
-        // 2. SAFE CHECK: Only try to read .time if the array actually has data
-        if (dataArray && dataArray.length > 0) {
-            latestTime = dataArray[dataArray.length - 1].time;
+        // SAFE PATH CHECKING: Avoids the "undefined" crash on line 72
+        if (type === 'satellite') {
+            const infrared = rvData?.satellite?.infrared;
+            if (infrared && infrared.length > 0) {
+                latestTime = infrared[infrared.length - 1].time;
+            }
+        } else {
+            const past = rvData?.radar?.past;
+            if (past && past.length > 0) {
+                latestTime = past[past.length - 1].time;
+            }
         }
 
-        // 3. FALLBACK: If API has no data yet, calculate a valid 10-minute timestamp
+        // FALLBACK: If API is empty, calculate a fresh 10-minute block
         if (!latestTime) {
-            console.warn(`RainViewer: No ${type} data in API. Generating manual timestamp.`);
             latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
+            console.log(`Using fallback timestamp: ${latestTime}`);
         }
 
-        // 4. Final Construction (latestTime is now guaranteed to have a value)
+        // Construct URL with high-quality settings (the "2/1_1.png" at the end)
         const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
-            opacity: 0.6,
+            opacity: 0.7,
             zIndex: 1000,
-            crossOrigin: true 
+            crossOrigin: true
         }).addTo(map);
 
     } catch (e) {
-        console.error("RainViewer System Error:", e.message);
+        console.error("Layer Load Error:", e.message);
     }
 
     if (element) {
