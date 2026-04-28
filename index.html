@@ -107,44 +107,35 @@ async function updateMapLayer(type = 'radar', element = null) {
         const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const rvData = await rvRes.json();
         
-        let latestTime;
+        let latestTime = null;
 
-        // 1. Specifically target the correct array based on type
-        if (type === 'satellite') {
-            // Satellite uses the 'infrared' array
-            const satArray = rvData.satellite?.infrared;
-            if (satArray && satArray.length > 0) {
-                latestTime = satArray[satArray.length - 1].time;
-            }
-        } else {
-            // Radar uses the 'past' array
-            const radArray = rvData.radar?.past;
-            if (radArray && radArray.length > 0) {
-                latestTime = radArray[radArray.length - 1].time;
-            }
+        // 1. Determine the correct array based on type
+        const dataArray = (type === 'satellite') ? rvData.satellite?.infrared : rvData.radar?.past;
+
+        // 2. SAFE CHECK: Only try to read .time if the array actually has data
+        if (dataArray && dataArray.length > 0) {
+            latestTime = dataArray[dataArray.length - 1].time;
         }
 
-        // 2. Final safety: If the API arrays are empty, use a fallback timestamp
+        // 3. FALLBACK: If API has no data yet, calculate a valid 10-minute timestamp
         if (!latestTime) {
-            console.warn("RainViewer: Time data missing for type:", type);
-            // Generates a valid timestamp for the nearest 10-minute block
+            console.warn(`RainViewer: No ${type} data in API. Generating manual timestamp.`);
             latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
         }
 
-        // 3. Construct the secure tile URL
+        // 4. Final Construction (latestTime is now guaranteed to have a value)
         const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
             opacity: 0.6,
             zIndex: 1000,
-            crossOrigin: true // Critical for preventing CORS issues
+            crossOrigin: true 
         }).addTo(map);
 
     } catch (e) {
         console.error("RainViewer System Error:", e.message);
     }
 
-    // Update UI button states
     if (element) {
         document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
         element.classList.add('active');
