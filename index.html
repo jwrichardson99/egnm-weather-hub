@@ -126,26 +126,31 @@
     </div>
 
     <script>
-        const PROXY = "https://api.allorigins.win/raw?url=";
-        const METAR_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/stations/EGNM.TXT";
-        const TAF_URL = "https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/EGNM.TXT";
+        // Replace your existing URL variables with these:
+const PROXY = "https://corsproxy.io/?";
+const METAR_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/stations/EGNM.TXT";
+const TAF_URL = "https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/EGNM.TXT";
+
+async function fetchAviationData() {
+    try {
+        // We add a timestamp to the end to prevent the proxy from serving a cached error
+        const cacheBuster = `&t=${new Date().getTime()}`;
         
-        // Open-Meteo for EGNM (Leeds Bradford coords: 53.86, -1.66)
-        const WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m";
+        const metarRes = await fetch(PROXY + encodeURIComponent(METAR_URL) + cacheBuster);
+        if (!metarRes.ok) throw new Error('METAR Fetch Failed');
+        const metarData = await metarRes.text();
+        document.getElementById('metar-text').innerText = metarData.replace(/\n/g, ' ');
 
-        async function fetchAviationData() {
-            try {
-                const metarRes = await fetch(PROXY + encodeURIComponent(METAR_URL));
-                const metarData = await metarRes.text();
-                document.getElementById('metar-text').innerText = metarData.replace(/\n/g, ' ');
-
-                const tafRes = await fetch(PROXY + encodeURIComponent(TAF_URL));
-                const tafData = await tafRes.text();
-                document.getElementById('taf-text').innerText = tafData;
-            } catch (e) {
-                console.error("Aviation data error:", e);
-            }
-        }
+        const tafRes = await fetch(PROXY + encodeURIComponent(TAF_URL) + cacheBuster);
+        if (!tafRes.ok) throw new Error('TAF Fetch Failed');
+        const tafData = await tafRes.text();
+        document.getElementById('taf-text').innerText = tafData;
+        
+    } catch (e) {
+        console.error("Aviation data error:", e);
+        document.getElementById('metar-text').innerText = "Aviation Data Temporarily Unavailable";
+    }
+}
 
         async function fetchWeather() {
             try {
