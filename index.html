@@ -92,11 +92,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // 1. Constants & Configuration
-// 1. Configuration
+// 1. Constants
 const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
 const EGNM_COORDS = [53.86, -1.66];
-let weatherLayer; // Keeps track of the current weather overlay
+let weatherLayer; // Global variable to track the active overlay
 
 // 2. Initialize Map
 const map = L.map('map', { 
@@ -104,39 +103,41 @@ const map = L.map('map', {
     attributionControl: false 
 }).setView(EGNM_COORDS, 8);
 
-// Reliable Base Layer (CartoDB is very CORS-friendly)
+// Stable Base Layer
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-// Add Marker for EGNM
+// EGNM Marker
 L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
 // 3. Robust Layer Switcher
-function updateMapLayer(layerType, element) {
-    // Remove the old layer if it exists
+function updateMapLayer(layerName, element) {
+    console.log("Switching to layer:", layerName);
+    
     if (weatherLayer) {
         map.removeLayer(weatherLayer);
     }
 
-    // Direct URL for Open-Meteo tiles. 
-    // Using 'best_match' ensures the server picks the most available model.
-    const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerType}/{z}/{x}/{y}.png`;
+    // Open-Meteo Tile URL - Using the specific 'best_match' model
+    // This format is less likely to trigger 404s
+    const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerName}/{z}/{x}/{y}.png`;
 
     weatherLayer = L.tileLayer(tileUrl, {
-        opacity: 0.6,
+        opacity: 0.5,
         zIndex: 1000,
-        // The key fix for your CORS errors:
+        // This is the CRITICAL fix for the CORS/CORB errors in your screenshots
         crossOrigin: true 
     }).addTo(map);
 
-    // Update UI button highlights
+    // Update UI
     document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
     if (element) element.classList.add('active');
 }
 
-// 4. Data Fetching (METAR/Stats)
+// 4. Data Fetching
 async function fetchAviationData() {
     try {
         const headers = { "X-API-Key": CHECKWX_API_KEY };
+        // Calling directly - stop using allorigins proxy as it is failing (522 error)
         const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
         const metarJson = await metarRes.json();
         if (metarJson.data) document.getElementById('metar-text').innerText = metarJson.data[0];
@@ -144,7 +145,7 @@ async function fetchAviationData() {
         const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
         const tafJson = await tafRes.json();
         if (tafJson.data) document.getElementById('taf-text').innerText = tafJson.data[0];
-    } catch (e) { console.error("Aviation Data Error:", e); }
+    } catch (e) { console.error("Aviation Error:", e); }
 }
 
 async function fetchWeather() {
@@ -158,10 +159,10 @@ async function fetchWeather() {
         document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
         document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
         document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
-    } catch (e) { console.error("Weather Data Error:", e); }
+    } catch (e) { console.error("Weather Error:", e); }
 }
 
-// Initial Load
+// 5. Initial Execution
 updateMapLayer('precipitation');
 fetchAviationData();
 fetchWeather();
