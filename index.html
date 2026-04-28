@@ -3,132 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EGNM Aviation Dashboard (Open-Meteo)</title>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@openmeteo/mapbox-layer@1.0.4/dist/leaflet.min.js"></script>
-
+    <title>EGNM Aviation Weather Dashboard</title>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
-        #map { width: 100%; height: 100%; background: #111; }
+        :root {
+            --glass: rgba(255, 255, 255, 0.1);
+            --text: #ffffff;
+        }
 
-        /* Overlay Styling */
-        #aviation-overlay {
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a2e; /* Fallback */
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* METAR/TAF Box */
+        #aviation-box {
             position: absolute;
-            top: 15px;
-            left: 15px;
-            z-index: 1000;
-            width: 360px;
-            pointer-events: none;
-        }
-
-        .panel {
-            background: rgba(20, 20, 20, 0.9);
-            color: #00ff41;
-            padding: 12px;
+            top: 20px;
+            left: 20px;
+            width: 350px;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
             border-radius: 8px;
-            border: 1px solid #444;
+            padding: 10px;
+            z-index: 10;
+        }
+
+        .label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.7; margin-bottom: 4px; }
+
+        /* Horizontal Scroll for METAR */
+        #metar-container {
+            white-space: nowrap;
+            overflow: hidden;
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
             margin-bottom: 10px;
-            font-family: 'Courier New', monospace;
-            pointer-events: auto;
+        }
+        #metar-text {
+            display: inline-block;
+            animation: scroll-left 15s linear infinite;
         }
 
-        .label { color: #888; font-size: 0.7rem; text-transform: uppercase; display: block; margin-bottom: 4px; }
-
-        /* Scrollers */
-        .marquee-h { white-space: nowrap; overflow: hidden; }
-        .marquee-h span { display: inline-block; padding-left: 100%; animation: scroll-h 20s linear infinite; }
-        @keyframes scroll-h { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-
-        .marquee-v { height: 50px; overflow: hidden; position: relative; }
-        .marquee-v span { position: absolute; width: 100%; animation: scroll-v 12s linear infinite; }
-        @keyframes scroll-v { 0% { top: 100%; } 100% { top: -150%; } }
-
-        /* Controls */
-        .controls { display: flex; flex-wrap: wrap; gap: 5px; pointer-events: auto; }
-        .btn {
-            background: #333; color: white; border: 1px solid #555;
-            padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+        /* Vertical Scroll for TAF */
+        #taf-container {
+            height: 80px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
+            position: relative;
         }
-        .btn.active { background: #007bff; border-color: #00a2ff; }
+        #taf-text {
+            position: absolute;
+            animation: scroll-up 20s linear infinite;
+        }
+
+        /* Weather Stats Grid */
+        #stats-grid {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            width: 90%;
+        }
+
+        .stat-card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        @keyframes scroll-left {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        @keyframes scroll-up {
+            0% { top: 100%; }
+            100% { top: -150%; }
+        }
     </style>
 </head>
 <body>
 
-    <div id="map"></div>
+    <div id="aviation-box">
+        <div class="label">EGNM METAR</div>
+        <div id="metar-container"><span id="metar-text">Loading METAR...</span></div>
+        <div class="label">EGNM TAF</div>
+        <div id="taf-container"><div id="taf-text">Loading TAF...</div></div>
+    </div>
 
-    <div id="aviation-overlay">
-        <div class="panel">
-            <span class="label">METAR EGNM</span>
-            <div class="marquee-h"><span id="metar-text">Syncing...</span></div>
+    <div id="stats-grid">
+        <div class="stat-card">
+            <div class="label">Temperature</div>
+            <div id="temp">--</div>
         </div>
-        
-        <div class="panel">
-            <span class="label">TAF EGNM</span>
-            <div class="marquee-v"><span id="taf-text">Syncing...</span></div>
+        <div class="stat-card">
+            <div class="label">Precipitation</div>
+            <div id="precip">--</div>
         </div>
-
-        <div class="controls">
-            <button class="btn active" onclick="updateWeather('temperature_2m', this)">Temp</button>
-            <button class="btn" onclick="updateWeather('wind_speed_10m', this)">Wind</button>
-            <button class="btn" onclick="updateWeather('cloud_cover', this)">Clouds</button>
-            <button class="btn" onclick="updateWeather('precipitation', this)">Rain</button>
+        <div class="stat-card">
+            <div class="label">Cloud Cover</div>
+            <div id="clouds">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Pressure</div>
+            <div id="mslp">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Wind</div>
+            <div id="wind">--</div>
         </div>
     </div>
 
     <script>
-        const EGNM = [53.8659, -1.6606];
+        const PROXY = "https://api.allorigins.win/raw?url=";
+        const METAR_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/stations/EGNM.TXT";
+        const TAF_URL = "https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/EGNM.TXT";
+        
+        // Open-Meteo for EGNM (Leeds Bradford coords: 53.86, -1.66)
+        const WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m";
 
-        // 1. Setup Map
-        const map = L.map('map').setView(EGNM, 8);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-
-        let weatherLayer = null;
-
-        // 2. Open-Meteo Layer Logic
-        function updateWeather(variable, btn) {
-            if (weatherLayer) map.removeLayer(weatherLayer);
-
-            // Open-Meteo uses a JSON config for the latest model data
-            const omSource = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=${variable}`;
-            
-            // The OpenMeteo adapter handles the 'om://' protocol
-            weatherLayer = L.openMeteoLayer(omSource, {
-                opacity: 0.6,
-                maxZoom: 12
-            }).addTo(map);
-
-            // UI logic
-            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-            if(btn) btn.classList.add('active');
-        }
-
-        // Initialize with Temperature
-        updateWeather('temperature_2m');
-
-        // 3. Aviation Data Fetch (CORS Proxy)
-        async function fetchAviation() {
-            const proxy = 'https://corsproxy.io/?';
-            const icao = 'EGNM';
+        async function fetchAviationData() {
             try {
-                const [mRes, tRes] = await Promise.all([
-                    fetch(`${proxy}https://tgftp.nws.noaa.gov/data/observations/metar/stations/${icao}.TXT`),
-                    fetch(`${proxy}https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/${icao}.TXT`)
-                ]);
-                const mData = await mRes.text();
-                const tData = await tRes.text();
+                const metarRes = await fetch(PROXY + encodeURIComponent(METAR_URL));
+                const metarData = await metarRes.text();
+                document.getElementById('metar-text').innerText = metarData.replace(/\n/g, ' ');
 
-                document.getElementById('metar-text').innerText = mData.split('\n').slice(1).join(' ').trim();
-                document.getElementById('taf-text').innerText = tData.split('\n').slice(1).join(' ').trim();
-            } catch (e) { console.error("Aviation sync failed", e); }
+                const tafRes = await fetch(PROXY + encodeURIComponent(TAF_URL));
+                const tafData = await tafRes.text();
+                document.getElementById('taf-text').innerText = tafData;
+            } catch (e) {
+                console.error("Aviation data error:", e);
+            }
         }
 
-        fetchAviation();
-        setInterval(fetchAviation, 600000);
+        async function fetchWeather() {
+            try {
+                const res = await fetch(WEATHER_URL);
+                const data = await res.json();
+                const cur = data.current;
+
+                document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
+                document.getElementById('precip').innerText = `${cur.precipitation} mm`;
+                document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
+                document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
+                document.getElementById('wind').innerText = `${cur.wind_speed_10m} km/h`;
+            } catch (e) {
+                console.error("Weather data error:", e);
+            }
+        }
+
+        // Initialize
+        fetchAviationData();
+        fetchWeather();
+        // Refresh every 5 minutes
+        setInterval(() => { fetchAviationData(); fetchWeather(); }, 300000);
     </script>
 </body>
 </html>
