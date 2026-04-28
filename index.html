@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EGNM Aviation Weather Dashboard</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="icon" href="data:,">
     <style>
         :root {
             --glass: rgba(15, 23, 42, 0.85);
@@ -108,19 +109,25 @@ async function updateMapLayer(type = 'radar', element = null) {
         
         let latestTime;
 
-        // More robust checking of the RainViewer JSON structure
-        if (type === 'satellite' && rvData.satellite?.infrared) {
-            const satArray = rvData.satellite.infrared;
-            latestTime = satArray[satArray.length - 1].time;
-        } else if (rvData.radar?.past && rvData.radar.past.length > 0) {
-            const radArray = rvData.radar.past;
-            latestTime = radArray[radArray.length - 1].time;
+        // Logic to handle different data paths for Radar vs Satellite
+        if (type === 'satellite') {
+            // Check if satellite data exists before getting the last time
+            const satArray = rvData.satellite?.infrared;
+            if (satArray && satArray.length > 0) {
+                latestTime = satArray[satArray.length - 1].time;
+            }
+        } else {
+            // Standard radar path
+            const radArray = rvData.radar?.past;
+            if (radArray && radArray.length > 0) {
+                latestTime = radArray[radArray.length - 1].time;
+            }
         }
 
-        // If API fails to provide a time, we generate a recent 10-minute block as fallback
+        // Final safety check: If we still don't have a time, use a rounded current timestamp
         if (!latestTime) {
             latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
-            console.warn("Using fallback timestamp for map layer.");
+            console.warn("Time data missing from API, using fallback.");
         }
 
         const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
