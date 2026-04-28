@@ -109,38 +109,42 @@ async function updateMapLayer(type = 'radar', element = null) {
         
         let latestTime;
 
-        // Logic to handle different data paths for Radar vs Satellite
+        // 1. Specifically target the correct array based on type
         if (type === 'satellite') {
-            // Check if satellite data exists before getting the last time
+            // Satellite uses the 'infrared' array
             const satArray = rvData.satellite?.infrared;
             if (satArray && satArray.length > 0) {
                 latestTime = satArray[satArray.length - 1].time;
             }
         } else {
-            // Standard radar path
+            // Radar uses the 'past' array
             const radArray = rvData.radar?.past;
             if (radArray && radArray.length > 0) {
                 latestTime = radArray[radArray.length - 1].time;
             }
         }
 
-        // Final safety check: If we still don't have a time, use a rounded current timestamp
+        // 2. Final safety: If the API arrays are empty, use a fallback timestamp
         if (!latestTime) {
+            console.warn("RainViewer: Time data missing for type:", type);
+            // Generates a valid timestamp for the nearest 10-minute block
             latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600);
-            console.warn("Time data missing from API, using fallback.");
         }
 
+        // 3. Construct the secure tile URL
         const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
             opacity: 0.6,
-            zIndex: 1000
+            zIndex: 1000,
+            crossOrigin: true // Critical for preventing CORS issues
         }).addTo(map);
 
     } catch (e) {
-        console.error("RainViewer Error:", e.message);
+        console.error("RainViewer System Error:", e.message);
     }
 
+    // Update UI button states
     if (element) {
         document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
         element.classList.add('active');
