@@ -4,181 +4,169 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EGNM Aviation Weather Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root {
-            --glass: rgba(255, 255, 255, 0.1);
+            --glass: rgba(15, 23, 42, 0.85);
             --text: #ffffff;
+            --accent: #38bdf8;
         }
 
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #1a1a2e; /* Fallback */
-            color: var(--text);
-            height: 100vh;
-            overflow: hidden;
-        }
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0f172a; color: var(--text); font-family: 'Segoe UI', sans-serif; }
 
-        /* METAR/TAF Box */
+        /* Map background */
+        #map { position: absolute; top: 0; bottom: 0; left: 0; right: 0; z-index: 1; }
+
+        /* UI Overlays */
         #aviation-box {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 350px;
-            background: var(--glass);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 8px;
-            padding: 10px;
-            z-index: 10;
+            position: absolute; top: 20px; left: 20px; width: 350px;
+            background: var(--glass); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+            padding: 15px; z-index: 10; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
         }
 
-        .label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.7; margin-bottom: 4px; }
+        .label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 5px; font-weight: bold; }
 
-        /* Horizontal Scroll for METAR */
-        #metar-container {
-            white-space: nowrap;
-            overflow: hidden;
-            background: rgba(0,0,0,0.3);
-            padding: 5px;
-            margin-bottom: 10px;
-        }
-        #metar-text {
-            display: inline-block;
-            animation: scroll-left 15s linear infinite;
-        }
+        #metar-container { white-space: nowrap; overflow: hidden; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
+        #metar-text { display: inline-block; animation: scroll-left 20s linear infinite; font-family: 'Courier New', monospace; font-size: 0.9rem; }
 
-        /* Vertical Scroll for TAF */
-        #taf-container {
-            height: 80px;
-            overflow: hidden;
-            background: rgba(0,0,0,0.3);
-            padding: 5px;
-            position: relative;
-        }
-        #taf-text {
-            position: absolute;
-            animation: scroll-up 20s linear infinite;
-        }
+        #taf-container { height: 90px; overflow: hidden; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; position: relative; border-left: 3px solid var(--accent); }
+        #taf-text { position: absolute; animation: scroll-up 25s linear infinite; font-family: 'Courier New', monospace; font-size: 0.85rem; width: 95%; }
 
-        /* Weather Stats Grid */
+        /* Layer Controls */
+        #layer-selector {
+            position: absolute; top: 20px; right: 20px; z-index: 10;
+            display: flex; flex-direction: column; gap: 5px;
+        }
+        .layer-btn {
+            background: var(--glass); border: 1px solid rgba(255,255,255,0.2);
+            color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer;
+            backdrop-filter: blur(8px); transition: 0.3s; font-size: 0.8rem;
+        }
+        .layer-btn:hover { background: var(--accent); color: #000; }
+        .layer-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+        /* Bottom Stats */
         #stats-grid {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 20px;
-            width: 90%;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;
+            width: 90%; z-index: 10;
         }
-
         .stat-card {
-            background: var(--glass);
-            backdrop-filter: blur(10px);
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.1);
+            background: var(--glass); backdrop-filter: blur(10px); padding: 15px;
+            border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.1);
         }
+        .stat-value { font-size: 1.2rem; font-weight: bold; margin-top: 5px; }
 
-        @keyframes scroll-left {
-            0% { transform: translateX(100%); }
-            100% { transform: translateX(-100%); }
-        }
-
-        @keyframes scroll-up {
-            0% { top: 100%; }
-            100% { top: -150%; }
-        }
+        @keyframes scroll-left { 0% { transform: translateX(100%); } 100% { transform: translateX(-150%); } }
+        @keyframes scroll-up { 0% { top: 100%; } 100% { top: -250%; } }
     </style>
 </head>
 <body>
 
+    <div id="map"></div>
+
+    <div id="layer-selector">
+		<button class="layer-btn active" onclick="updateMapLayer('precipitation', this)">Precipitation</button>
+		<button class="layer-btn" onclick="updateMapLayer('temperature_2m', this)">Temperature</button>
+		<button class="layer-btn" onclick="updateMapLayer('cloud_cover', this)">Clouds</button>
+		<button class="layer-btn" onclick="updateMapLayer('pressure_msl', this)">Pressure</button>
+		<button class="layer-btn" onclick="updateMapLayer('wind_speed_10m', this)">Wind</button>
+	</div>
+
     <div id="aviation-box">
         <div class="label">EGNM METAR</div>
-        <div id="metar-container"><span id="metar-text">Loading METAR...</span></div>
+        <div id="metar-container"><span id="metar-text">Syncing...</span></div>
         <div class="label">EGNM TAF</div>
-        <div id="taf-container"><div id="taf-text">Loading TAF...</div></div>
+        <div id="taf-container"><div id="taf-text">Syncing...</div></div>
     </div>
 
     <div id="stats-grid">
-        <div class="stat-card">
-            <div class="label">Temperature</div>
-            <div id="temp">--</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">Precipitation</div>
-            <div id="precip">--</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">Cloud Cover</div>
-            <div id="clouds">--</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">Pressure</div>
-            <div id="mslp">--</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">Wind</div>
-            <div id="wind">--</div>
-        </div>
+        <div class="stat-card"><div class="label">Temp</div><div id="temp" class="stat-value">--</div></div>
+        <div class="stat-card"><div class="label">Precip</div><div id="precip" class="stat-value">--</div></div>
+        <div class="stat-card"><div class="label">Clouds</div><div id="clouds" class="stat-value">--</div></div>
+        <div class="stat-card"><div class="label">MSLP</div><div id="mslp" class="stat-value">--</div></div>
+        <div class="stat-card"><div class="label">Wind</div><div id="wind" class="stat-value">--</div></div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script>
-        // --- CONFIGURATION ---
-const METAR_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/stations/EGNM.TXT";
-const TAF_URL = "https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/EGNM.TXT";
-const WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m";
+        const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
+        const EGNM_COORDS = [53.86, -1.66];
+        let weatherLayer;
 
-// Using AllOrigins with a wrapper to avoid 403 Forbidden issues
-const getProxiedData = async (url) => {
-    const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}&t=${Date.now()}`);
-    if (!response.ok) throw new Error('Network response was not ok');
-    const json = await response.json();
-    return json.contents; // AllOrigins wraps the text in a 'contents' property
-};
+        // 1. Initialize Map
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
 
-async function fetchAviationData() {
-    try {
-        const metarData = await getProxiedData(METAR_URL);
-        document.getElementById('metar-text').innerText = metarData.replace(/\n/g, ' ').trim();
+        // Dark Base Layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        const tafData = await getProxiedData(TAF_URL);
-        document.getElementById('taf-text').innerText = tafData.trim();
-        
-    } catch (e) {
-        console.error("Aviation data error:", e);
-        document.getElementById('metar-text').innerText = "Aviation Data Syncing... (Check back in a moment)";
-    }
-}
+        // Add Marker for EGNM
+        L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map).bindTooltip("EGNM - Leeds Bradford");
 
-async function fetchWeather() {
-    try {
-        const res = await fetch(WEATHER_URL);
-        if (!res.ok) throw new Error('Weather API error');
-        const data = await res.json();
-        const cur = data.current;
+        // 2. Map Layer Function
+        function updateMapLayer(layerName, element) {
+			console.log("Changing layer to:", layerName); // Check your console (F12) to see this
 
-        document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
-        document.getElementById('precip').innerText = `${cur.precipitation} mm`;
-        document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
-        document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
-        document.getElementById('wind').innerText = `${cur.wind_speed_10m} km/h`;
-    } catch (e) {
-        console.error("Weather data error:", e);
-    }
-}
+			// 1. Remove the old layer if it exists
+			if (weatherLayer) {
+				map.removeLayer(weatherLayer);
+			}
+			
+			// 2. Create the new Open-Meteo tile layer
+			// Note: Open-Meteo tiles usually follow this URL pattern
+			weatherLayer = L.tileLayer(`https://map-tiles.open-meteo.com/v1/forecast/${layerName}/{z}/{x}/{y}.png`, {
+				opacity: 0.6,
+				maxZoom: 12,
+				transparent: true
+			}).addTo(map);
 
-// --- INITIALIZE ---
-fetchAviationData();
-fetchWeather();
+			// 3. Update Button Styling
+			// Remove 'active' class from all buttons
+			document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
+			
+			// Add 'active' class to the clicked button
+			if (element) {
+				element.classList.add('active');
+			}
+		}
 
-// Refresh every 5 minutes
-setInterval(() => { 
-    fetchAviationData(); 
-    fetchWeather(); 
-}, 300000);
+        // Default Layer
+        updateMapLayer('precipitation');
+
+        // 3. Data Fetching
+        async function fetchAviationData() {
+            try {
+                const headers = { "X-API-Key": CHECKWX_API_KEY };
+                const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
+                const metarJson = await metarRes.json();
+                document.getElementById('metar-text').innerText = metarJson.data[0] || "No METAR data";
+
+                const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
+                const tafJson = await tafRes.json();
+                document.getElementById('taf-text').innerText = tafJson.data[0] || "No TAF data";
+            } catch (e) { console.error("Aviation error:", e); }
+        }
+
+        async function fetchWeather() {
+            try {
+                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
+                const data = await res.json();
+                const cur = data.current;
+                document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
+                document.getElementById('precip').innerText = `${cur.precipitation} mm`;
+                document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
+                document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
+                document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
+            } catch (e) { console.error("Weather error:", e); }
+        }
+
+        // Init and Intervals
+        fetchAviationData();
+        fetchWeather();
+        setInterval(fetchAviationData, 300000);
+        setInterval(fetchWeather, 300000);
     </script>
 </body>
 </html>
