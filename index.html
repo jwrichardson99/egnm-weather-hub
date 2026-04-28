@@ -1,78 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EGNM Weather Dashboard</title>
-    
-    <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
-    <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
-
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>EGNM Weather Dashboard</title>
         
-        #windy {
-            width: 100%;
-            height: 100%;
-        }
-
-        /* Top Left Info Container */
-        #aviation-data {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 1000;
-            width: 350px;
-            pointer-events: none; /* Allows clicking through to the map */
-        }
-
-        .data-box {
-            background: rgba(0, 0, 0, 0.8);
-            color: #00ff00;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #444;
-            margin-bottom: 5px;
-            font-family: 'Courier New', Courier, monospace;
-            font-weight: bold;
-            overflow: hidden;
-            pointer-events: auto;
-        }
-
-        /* METAR Horizontal Scroll */
-        .metar-container {
-            white-space: nowrap;
-            overflow: hidden;
-        }
-        .metar-scroll {
-            display: inline-block;
-            padding-left: 100%;
-            animation: scroll-left 15s linear infinite;
-        }
-        @keyframes scroll-left {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-100%); }
-        }
-
-        /* TAF Vertical Scroll */
-        .taf-container {
-            height: 80px;
-            overflow: hidden;
-            position: relative;
-        }
-        .taf-scroll {
-            position: absolute;
-            width: 100%;
-            animation: scroll-up 10s linear infinite;
-        }
-        @keyframes scroll-up {
-            0% { top: 100%; }
-            100% { top: -100%; }
-        }
-
-        .label { color: #aaa; font-size: 0.8em; display: block; margin-bottom: 2px; }
-    </style>
-</head>
+        <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
+        <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
+    
+        <style>
+            body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
+            
+            #windy {
+                width: 100%;
+                height: 100%;
+            }
+    
+            /* Top Left Info Container */
+            #aviation-data {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                z-index: 1000;
+                width: 350px;
+                pointer-events: none; /* Allows clicking through to the map */
+            }
+    
+            .data-box {
+                background: rgba(0, 0, 0, 0.8);
+                color: #00ff00;
+                padding: 10px;
+                border-radius: 5px;
+                border: 1px solid #444;
+                margin-bottom: 5px;
+                font-family: 'Courier New', Courier, monospace;
+                font-weight: bold;
+                overflow: hidden;
+                pointer-events: auto;
+            }
+    
+            /* METAR Horizontal Scroll */
+            .metar-container {
+                white-space: nowrap;
+                overflow: hidden;
+            }
+            .metar-scroll {
+                display: inline-block;
+                padding-left: 100%;
+                animation: scroll-left 15s linear infinite;
+            }
+            @keyframes scroll-left {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(-100%); }
+            }
+    
+            /* TAF Vertical Scroll */
+            .taf-container {
+                height: 80px;
+                overflow: hidden;
+                position: relative;
+            }
+            .taf-scroll {
+                position: absolute;
+                width: 100%;
+                animation: scroll-up 10s linear infinite;
+            }
+            @keyframes scroll-up {
+                0% { top: 100%; }
+                100% { top: -100%; }
+            }
+    
+            .label { color: #aaa; font-size: 0.8em; display: block; margin-bottom: 2px; }
+    
+            /* Layer Selector Styling */
+            .layer-selector {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 5px;
+                margin-top: 10px;
+                pointer-events: auto;
+            }
+            
+            .layer-btn {
+                background: rgba(40, 40, 40, 0.9);
+                color: white;
+                border: 1px solid #666;
+                padding: 5px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                transition: background 0.2s;
+            }
+            
+            .layer-btn:hover {
+                background: #444;
+            }
+            
+            .layer-btn.active {
+                background: #0074d9;
+                border-color: #00aaff;
+            }
+        </style>
+    </head>
 <body>
 
     <div id="windy"></div>
@@ -89,6 +118,13 @@
             <div class="taf-container">
                 <div id="taf-text" class="taf-scroll">Fetching latest TAF data...</div>
             </div>
+        </div>
+        <div class="layer-selector">
+            <button class="layer-btn active" onclick="changeLayer('wind', this)">Wind</button>
+            <button class="layer-btn" onclick="changeLayer('radar', this)">Radar</button>
+            <button class="layer-btn" onclick="changeLayer('rain', this)">Rain</button>
+            <button class="layer-btn" onclick="changeLayer('temp', this)">Temp</button>
+            <button class="layer-btn" onclick="changeLayer('clouds', this)">Clouds</button>
         </div>
     </div>
 
@@ -114,38 +150,60 @@
             console.log("Windy Map Initialized at EGNM");
         });
 
+        let windyStore; // Global reference to Windy store
+
+        windyInit(options, (windyAPI) => {
+            const { map, store } = windyAPI;
+            windyStore = store; // Save for later use
+        
+            store.set('overlay', 'wind');
+            console.log("Windy Map Initialized");
+        });
+        
+        // Function to switch layers
+        function changeLayer(layerName, element) {
+            if (!windyStore) return;
+        
+            // 1. Tell Windy to change the overlay
+            windyStore.set('overlay', layerName);
+        
+            // 2. Update UI (active button styling)
+            document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+        }
+
         // 2. Fetch NOAA Aviation Data via CORS Proxy
-async function fetchAviationData() {
-    const icao = 'EGNM';
-    
-    // We use a CORS proxy to bypass the restriction
-    const proxy = 'https://corsproxy.io/?'; 
-    const metarUrl = `${proxy}https://tgftp.nws.noaa.gov/data/observations/metar/stations/${icao}.TXT`;
-    const tafUrl = `${proxy}https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/${icao}.TXT`;
-
-    try {
-        // Fetch METAR
-        const metarRes = await fetch(metarUrl);
-        if (!metarRes.ok) throw new Error('METAR Fetch Failed');
-        const metarData = await metarRes.text();
+        async function fetchAviationData() {
+            const icao = 'EGNM';
+            
+            // We use a CORS proxy to bypass the restriction
+            const proxy = 'https://corsproxy.io/?'; 
+            const metarUrl = `${proxy}https://tgftp.nws.noaa.gov/data/observations/metar/stations/${icao}.TXT`;
+            const tafUrl = `${proxy}https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/${icao}.TXT`;
         
-        // Clean up the string (removes the date line at the top)
-        const cleanMetar = metarData.split('\n').slice(1).join(' ').trim();
-        document.getElementById('metar-text').innerText = cleanMetar || "No METAR data available";
-
-        // Fetch TAF
-        const tafRes = await fetch(tafUrl);
-        if (!tafRes.ok) throw new Error('TAF Fetch Failed');
-        const tafData = await tafRes.text();
+            try {
+                // Fetch METAR
+                const metarRes = await fetch(metarUrl);
+                if (!metarRes.ok) throw new Error('METAR Fetch Failed');
+                const metarData = await metarRes.text();
+                
+                // Clean up the string (removes the date line at the top)
+                const cleanMetar = metarData.split('\n').slice(1).join(' ').trim();
+                document.getElementById('metar-text').innerText = cleanMetar || "No METAR data available";
         
-        const cleanTaf = tafData.split('\n').slice(1).join(' ').trim();
-        document.getElementById('taf-text').innerText = cleanTaf || "No TAF data available";
-        
-    } catch (error) {
-        console.error("Error fetching aviation data:", error);
-        document.getElementById('metar-text').innerText = "Connectivity error - check console";
-    }
-}
+                // Fetch TAF
+                const tafRes = await fetch(tafUrl);
+                if (!tafRes.ok) throw new Error('TAF Fetch Failed');
+                const tafData = await tafRes.text();
+                
+                const cleanTaf = tafData.split('\n').slice(1).join(' ').trim();
+                document.getElementById('taf-text').innerText = cleanTaf || "No TAF data available";
+                
+            } catch (error) {
+                console.error("Error fetching aviation data:", error);
+                document.getElementById('metar-text').innerText = "Connectivity error - check console";
+            }
+        }
 
         // Initial fetch and set update interval (every 10 mins)
         fetchAviationData();
