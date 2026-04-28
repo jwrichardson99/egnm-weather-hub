@@ -95,12 +95,13 @@ windyInit(options, windyAPI => {
 
     store.set('baseLayer', 'dark');
     store.set('overlay', 'radar');
+    store.set('product', 'observation'); // Radar starts as observation
 
-    // Wait for the map to be fully loaded before starting the animation
+    // Ensure animation starts only after the map is ready
     broadcast.once('redrawFinished', () => {
         setTimeout(() => {
             broadcast.emit('p-play');
-        }, 1000);
+        }, 2000);
     });
 });
 
@@ -108,25 +109,26 @@ function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // 1. Determine Product
-    // Use 'observation' for radar/satellite, otherwise default to forecast models
+    // 1. Determine the correct product for the chosen layer
+    // Radar and Satellite = 'observation'
+    // Wind, Temp, Rain, Clouds = 'ecmwf' (the forecast model)
     const isObs = (layerKey === 'radar' || layerKey === 'satellite');
     const targetProduct = isObs ? 'observation' : 'ecmwf';
 
-    // 2. Execute changes
-    // We set overlay first, then product to help the renderer
-    store.set('overlay', layerKey);
+    // 2. Apply changes in a sequence the API likes
+    // We set the product first so the API knows which data set to look in for the overlay
     store.set('product', targetProduct);
+    store.set('overlay', layerKey);
 
-    // 3. Optional: Add pressure lines only for forecast layers
+    // 3. Set isolines (Pressure lines) only for forecast layers
     store.set('isolines', isObs ? 'none' : 'pressure');
 
-    // 4. UI Update
+    // UI Update
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 }
 
-// WEATHER DATA FETCH (METAR/TAF)
+// WEATHER DATA FETCH (METAR/TAF) - Unchanged as this part works well!
 async function updateWeather() {
     const icao = 'EGNM';
     const proxy = 'https://corsproxy.io/?';
@@ -146,12 +148,11 @@ async function updateWeather() {
         if (tafText.length > 5) document.getElementById('taf').innerText = tafText.trim();
         document.getElementById('time').innerText = "Live: " + new Date().toLocaleTimeString();
     } catch (err) {
-        console.error("Weather update failed:", err);
+        console.warn("Weather feed refresh failed, retrying later...");
     }
 }
 
 updateWeather();
 setInterval(updateWeather, 600000);
-    </script>
 </body>
 </html>
