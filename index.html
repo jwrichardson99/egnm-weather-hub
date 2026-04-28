@@ -93,78 +93,71 @@
 
     <script>
         const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
-        const EGNM_COORDS = [53.86, -1.66];
-        let weatherLayer;
+const EGNM_COORDS = [53.86, -1.66];
+let weatherLayer;
 
-        // 1. Initialize Map
-        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
+// 1. Initialize Map
+const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
 
-        // Dark Base Layer
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
-        // Add Marker for EGNM
-        L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map).bindTooltip("EGNM - Leeds Bradford");
+// 2. Optimized Map Layer Function
+function updateMapLayer(layerName, element) {
+    if (weatherLayer) {
+        map.removeLayer(weatherLayer);
+    }
+    
+    // Added '&time=current' - Open-Meteo tiles often need this for live data
+    const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/${layerName}/{z}/{x}/{y}.png?time=current`;
+    
+    weatherLayer = L.tileLayer(tileUrl, {
+        opacity: 0.5,
+        maxZoom: 12,
+        zIndex: 100 // Ensures it sits above the base map
+    }).addTo(map);
 
-        // 2. Map Layer Function
-        function updateMapLayer(layerName, element) {
-			console.log("Changing layer to:", layerName); // Check your console (F12) to see this
+    // Force the map to refresh the tiles
+    weatherLayer.redraw();
 
-			// 1. Remove the old layer if it exists
-			if (weatherLayer) {
-				map.removeLayer(weatherLayer);
-			}
-			
-			// 2. Create the new Open-Meteo tile layer
-			// Note: Open-Meteo tiles usually follow this URL pattern
-			weatherLayer = L.tileLayer(`https://map-tiles.open-meteo.com/v1/forecast/${layerName}/{z}/{x}/{y}.png`, {
-				opacity: 0.6,
-				maxZoom: 12,
-				transparent: true
-			}).addTo(map);
+    document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
+    if (element) element.classList.add('active');
+}
 
-			// 3. Update Button Styling
-			// Remove 'active' class from all buttons
-			document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
-			
-			// Add 'active' class to the clicked button
-			if (element) {
-				element.classList.add('active');
-			}
-		}
+// Default
+updateMapLayer('precipitation');
 
-        // Default Layer
-        updateMapLayer('precipitation');
+// 3. Data Fetching
+async function fetchAviationData() {
+    try {
+        const headers = { "X-API-Key": CHECKWX_API_KEY };
+        const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
+        const metarJson = await metarRes.json();
+        document.getElementById('metar-text').innerText = metarJson.data[0] || "No METAR data";
 
-        // 3. Data Fetching
-        async function fetchAviationData() {
-            try {
-                const headers = { "X-API-Key": CHECKWX_API_KEY };
-                const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
-                const metarJson = await metarRes.json();
-                document.getElementById('metar-text').innerText = metarJson.data[0] || "No METAR data";
+        const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
+        const tafJson = await tafRes.json();
+        document.getElementById('taf-text').innerText = tafJson.data[0] || "No TAF data";
+    } catch (e) { console.error("Aviation error:", e); }
+}
 
-                const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
-                const tafJson = await tafRes.json();
-                document.getElementById('taf-text').innerText = tafJson.data[0] || "No TAF data";
-            } catch (e) { console.error("Aviation error:", e); }
-        }
+async function fetchWeather() {
+    try {
+        // Double check this URL has &wind_speed_unit=kn
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
+        const data = await res.json();
+        const cur = data.current;
+        
+        document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
+        document.getElementById('precip').innerText = `${cur.precipitation} mm`;
+        document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
+        document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
+        document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`; // Corrected to kt
+    } catch (e) { console.error("Weather error:", e); }
+}
 
-        async function fetchWeather() {
-            try {
-                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
-                const data = await res.json();
-                const cur = data.current;
-                document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
-                document.getElementById('precip').innerText = `${cur.precipitation} mm`;
-                document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
-                document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
-                document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
-            } catch (e) { console.error("Weather error:", e); }
-        }
-
-        // Init and Intervals
-        fetchAviationData();
-        fetchWeather();
+fetchAviationData();
+fetchWeather();
         setInterval(fetchAviationData, 300000);
         setInterval(fetchWeather, 300000);
     </script>
