@@ -103,9 +103,14 @@ L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
 // 2. Hardened RainViewer Logic
 async function updateMapLayer(type = 'radar', element = null) {
-    if (weatherLayer) map.removeLayer(weatherLayer);
+    // 1. CLEAR: Remove existing weather layers completely to prevent stacking
+    map.eachLayer((layer) => {
+        if (layer instanceof L.TileLayer && !layer._url.includes('basemaps')) {
+            map.removeLayer(layer);
+        }
+    });
 
-    // Auto-zoom: Satellite needs to be at least zoom 7 to show anything
+    // 2. ZOOM: Satellite requires higher zoom (at least 7) to be visible
     if (type === 'satellite' && map.getZoom() < 7) {
         map.setZoom(7);
     }
@@ -116,7 +121,7 @@ async function updateMapLayer(type = 'radar', element = null) {
         
         let latestTime;
 
-        // Correct paths for RainViewer API
+        // 3. DATA PATH: Use the correct satellite or radar array
         if (type === 'satellite') {
             const satData = rvData.satellite?.infrared;
             if (satData && satData.length > 0) {
@@ -129,28 +134,28 @@ async function updateMapLayer(type = 'radar', element = null) {
             }
         }
 
-        // If API fails, we use a 10-minute trailing timestamp
+        // 4. FALLBACK: Use a timestamp from 20 mins ago to ensure the server has the file
         if (!latestTime) {
-            latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600) - 600;
+            latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600) - 1200;
         }
 
-        // The URL structure: {type}/{time}/{size}/{z}/{x}/{y}/{color}/{options}.png
-        // Using color '1' and '1_1' for smoothing/transparency
-        const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/1/1_1.png`;
+        // 5. COLOR SCHEME: Satellite uses '0' (Grayscale) for clear clouds
+        const colorScheme = (type === 'satellite') ? 0 : 1; 
+        const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/${colorScheme}/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
-            opacity: 0.8, // Increased for better visibility
+            opacity: 0.8,
             zIndex: 1000,
-            className: 'weather-layer',
-            crossOrigin: true // Crucial for modern browser security
+            crossOrigin: true
         }).addTo(map);
 
-        console.log(`Loading ${type} tiles for time: ${latestTime}`);
+        console.log(`Switched to ${type} at time ${latestTime}`);
 
     } catch (e) {
-        console.error("Critical Map Error:", e.message);
+        console.error("Layer Switch Error:", e.message);
     }
 
+    // 6. UI: Highlight the active button
     if (element) {
         document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
         element.classList.add('active');
