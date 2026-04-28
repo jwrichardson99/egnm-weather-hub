@@ -14,10 +14,8 @@
 
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0f172a; color: var(--text); font-family: 'Segoe UI', sans-serif; }
 
-        /* Map background */
         #map { position: absolute; top: 0; bottom: 0; left: 0; right: 0; z-index: 1; }
 
-        /* UI Overlays */
         #aviation-box {
             position: absolute; top: 20px; left: 20px; width: 350px;
             background: var(--glass); backdrop-filter: blur(8px);
@@ -33,7 +31,6 @@
         #taf-container { height: 90px; overflow: hidden; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; position: relative; border-left: 3px solid var(--accent); }
         #taf-text { position: absolute; animation: scroll-up 25s linear infinite; font-family: 'Courier New', monospace; font-size: 0.85rem; width: 95%; }
 
-        /* Layer Controls */
         #layer-selector {
             position: absolute; top: 20px; right: 20px; z-index: 10;
             display: flex; flex-direction: column; gap: 5px;
@@ -41,12 +38,11 @@
         .layer-btn {
             background: var(--glass); border: 1px solid rgba(255,255,255,0.2);
             color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer;
-            backdrop-filter: blur(8px); transition: 0.3s; font-size: 0.8rem;
+            backdrop-filter: blur(8px); transition: 0.3s; font-size: 0.8rem; text-align: left;
         }
         .layer-btn:hover { background: var(--accent); color: #000; }
         .layer-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
-        /* Bottom Stats */
         #stats-grid {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;
@@ -67,12 +63,10 @@
     <div id="map"></div>
 
     <div id="layer-selector">
-		<button class="layer-btn active" onclick="updateMapLayer('precipitation', this)">Precipitation</button>
-		<button class="layer-btn" onclick="updateMapLayer('temperature_2m', this)">Temperature</button>
-		<button class="layer-btn" onclick="updateMapLayer('cloud_cover', this)">Clouds</button>
-		<button class="layer-btn" onclick="updateMapLayer('pressure_msl', this)">Pressure</button>
-		<button class="layer-btn" onclick="updateMapLayer('wind_speed_10m', this)">Wind</button>
-	</div>
+        <button class="layer-btn active" onclick="updateMapLayer('radar', this)">Precipitation (Radar)</button>
+        <button class="layer-btn" onclick="updateMapLayer('satellite', this)">Infrared (Satellite)</button>
+        <div style="font-size: 0.6rem; color: rgba(255,255,255,0.5); padding: 5px;">Stats sync with Open-Meteo</div>
+    </div>
 
     <div id="aviation-box">
         <div class="label">EGNM METAR</div>
@@ -92,68 +86,91 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // 1. Constants & Configuration
-const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
-const EGNM_COORDS = [53.86, -1.66];
-let weatherLayer;
+        const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
+        const EGNM_COORDS = [53.86, -1.66];
+        let weatherLayer;
 
-// 1. Initialize Map
-const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
+        // 1. Initialize Map
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
-// Base Map (Dark Theme)
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
+        // 2. RainViewer Integration
+        async function updateMapLayer(type, element) {
+            if (weatherLayer) map.removeLayer(weatherLayer);
 
-// 2. RainViewer Layer Switcher
-async function updateMapLayer(type, element) {
-    if (weatherLayer) map.removeLayer(weatherLayer);
+            try {
+                const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+                const rvData = await rvRes.json();
+                
+                let latestTime;
+                if (type === 'satellite') {
+                    latestTime = rvData.satellite.infrared[rvData.satellite.infrared.length - 1].time;
+                } else {
+                    latestTime = rvData.radar.past[rvData.radar.past.length - 1].time;
+                }
 
-    try {
-        // We fetch the latest radar time from RainViewer to avoid 404 errors
-        const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-        const rvData = await rvRes.json();
-        const latestTime = rvData.radar.past[rvData.radar.past.length - 1].time;
+                // RainViewer uses 'radar' or 'satellite' in the URL path
+                const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
 
-        // Constructing the URL specifically for RainViewer
-        // 0 = no smoothing, 1_1 = color scheme
-        const tileUrl = `https://tilecache.rainviewer.com/v2/radar/${latestTime}/256/{z}/{x}/{y}/2/1_1.png`;
+                weatherLayer = L.tileLayer(tileUrl, {
+                    opacity: 0.6,
+                    zIndex: 1000
+                }).addTo(map);
+            } catch (e) {
+                console.error("RainViewer Layer Error:", e);
+            }
 
-        weatherLayer = L.tileLayer(tileUrl, {
-            opacity: 0.6,
-            zIndex: 1000
-        }).addTo(map);
-    } catch (e) {
-        console.error("RainViewer Layer Error:", e);
-    }
+            if (element) {
+                document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
+                element.classList.add('active');
+            }
+        }
 
-    // UI Updates
-    document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
-    if (element) element.classList.add('active');
-}
+        // 3. Aviation Data (CheckWX)
+        async function fetchAviationData() {
+            try {
+                const headers = { "X-API-Key": CHECKWX_API_KEY };
+                const [metarRes, tafRes] = await Promise.all([
+                    fetch(`https://api.checkwx.com/metar/egnm`, { headers }),
+                    fetch(`https://api.checkwx.com/taf/egnm`, { headers })
+                ]);
+                
+                const metarJson = await metarRes.json();
+                const tafJson = await tafRes.json();
 
-// 3. Stats Data (Keeping Open-Meteo for the numbers)
-async function fetchWeather() {
-    try {
-        // Direct call to bypass the failing allorigins proxy
-        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
-        const data = await res.json();
-        const cur = data.current;
-        
-        document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
-        document.getElementById('precip').innerText = `${cur.precipitation} mm`;
-        document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
-        document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
-        document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
-    } catch (e) {
-        console.error("Stats Error:", e);
-    }
-}
+                document.getElementById('metar-text').innerText = metarJson.data[0] || "METAR Unavailable";
+                document.getElementById('taf-text').innerText = tafJson.data[0] || "TAF Unavailable";
+            } catch (e) {
+                console.error("Aviation Data Error:", e);
+            }
+        }
 
-// Initial Load
-updateMapLayer('precipitation');
-fetchWeather();
-		setInterval(fetchAviationData, 300000);
-		setInterval(fetchWeather, 300000);
+        // 4. Stats Data (Open-Meteo)
+        async function fetchWeather() {
+            try {
+                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
+                const data = await res.json();
+                const cur = data.current;
+                
+                document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
+                document.getElementById('precip').innerText = `${cur.precipitation} mm`;
+                document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
+                document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
+                document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
+            } catch (e) {
+                console.error("Stats Error:", e);
+            }
+        }
+
+        // Initial Load
+        updateMapLayer('radar');
+        fetchAviationData();
+        fetchWeather();
+
+        // Intervals
+        setInterval(fetchAviationData, 300000); // 5 mins
+        setInterval(fetchWeather, 300000);      // 5 mins
     </script>
 </body>
 </html>
