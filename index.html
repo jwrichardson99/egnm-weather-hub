@@ -3,16 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EGNM Aviation Dashboard (OWM)</title>
+    <title>EGNM Aviation Dashboard (Open-Meteo)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@openmeteo/mapbox-layer@1.0.4/dist/leaflet.min.js"></script>
 
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #map { width: 100%; height: 100%; background: #222; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
+        #map { width: 100%; height: 100%; background: #111; }
 
-        /* Aviation Info Overlay */
+        /* Overlay Styling */
         #aviation-overlay {
             position: absolute;
             top: 15px;
@@ -22,39 +24,35 @@
             pointer-events: none;
         }
 
-        .glass-panel {
-            background: rgba(15, 15, 15, 0.85);
-            backdrop-filter: blur(5px);
-            color: #00ff41; /* Matrix Green */
+        .panel {
+            background: rgba(20, 20, 20, 0.9);
+            color: #00ff41;
             padding: 12px;
             border-radius: 8px;
-            border: 1px solid #333;
+            border: 1px solid #444;
             margin-bottom: 10px;
-            font-family: 'Courier New', Courier, monospace;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            font-family: 'Courier New', monospace;
             pointer-events: auto;
         }
 
-        .label { color: #888; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 4px; display: block; }
+        .label { color: #888; font-size: 0.7rem; text-transform: uppercase; display: block; margin-bottom: 4px; }
 
-        /* Scrolling Logic */
+        /* Scrollers */
         .marquee-h { white-space: nowrap; overflow: hidden; }
         .marquee-h span { display: inline-block; padding-left: 100%; animation: scroll-h 20s linear infinite; }
         @keyframes scroll-h { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
 
-        .marquee-v { height: 60px; overflow: hidden; position: relative; }
+        .marquee-v { height: 50px; overflow: hidden; position: relative; }
         .marquee-v span { position: absolute; width: 100%; animation: scroll-v 12s linear infinite; }
-        @keyframes scroll-v { 0% { top: 100%; } 100% { top: -120%; } }
+        @keyframes scroll-v { 0% { top: 100%; } 100% { top: -150%; } }
 
-        /* Layer Buttons */
-        .controls { display: flex; flex-wrap: wrap; gap: 6px; pointer-events: auto; }
+        /* Controls */
+        .controls { display: flex; flex-wrap: wrap; gap: 5px; pointer-events: auto; }
         .btn {
-            background: #222; color: #eee; border: 1px solid #444;
-            padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;
-            transition: all 0.2s;
+            background: #333; color: white; border: 1px solid #555;
+            padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
         }
-        .btn:hover { background: #333; border-color: #666; }
-        .btn.active { background: #005bb7; border-color: #0084ff; color: white; }
+        .btn.active { background: #007bff; border-color: #00a2ff; }
     </style>
 </head>
 <body>
@@ -62,84 +60,75 @@
     <div id="map"></div>
 
     <div id="aviation-overlay">
-        <div class="glass-panel">
+        <div class="panel">
             <span class="label">METAR EGNM</span>
-            <div class="marquee-h"><span id="metar-text">Loading METAR...</span></div>
+            <div class="marquee-h"><span id="metar-text">Syncing...</span></div>
         </div>
         
-        <div class="glass-panel">
+        <div class="panel">
             <span class="label">TAF EGNM</span>
-            <div class="marquee-v"><span id="taf-text">Loading TAF...</span></div>
+            <div class="marquee-v"><span id="taf-text">Syncing...</span></div>
         </div>
 
         <div class="controls">
-            <button class="btn active" onclick="setLayer('temp_new', this)">Temperature</button>
-            <button class="btn" onclick="setLayer('wind_new', this)">Wind</button>
-            <button class="btn" onclick="setLayer('clouds_new', this)">Clouds</button>
-            <button class="btn" onclick="setLayer('precipitation_new', this)">Precipitation</button>
+            <button class="btn active" onclick="updateWeather('temperature_2m', this)">Temp</button>
+            <button class="btn" onclick="updateWeather('wind_speed_10m', this)">Wind</button>
+            <button class="btn" onclick="updateWeather('cloud_cover', this)">Clouds</button>
+            <button class="btn" onclick="updateWeather('precipitation', this)">Rain</button>
         </div>
     </div>
 
     <script>
-        const OWM_KEY = 'ff6be41fa8e3ce6d1b32f799aa951692';
-        const EGNM_COORDS = [53.8659, -1.6606];
+        const EGNM = [53.8659, -1.6606];
 
-        // 1. Initialize Map
-        const map = L.map('map').setView(EGNM_COORDS, 8);
-
-        // Dark Base Layer
+        // 1. Setup Map
+        const map = L.map('map').setView(EGNM, 8);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap'
+            attribution: '&copy; OpenStreetMap'
         }).addTo(map);
 
         let weatherLayer = null;
 
-        // 2. Function to Switch Weather Layers
-        function setLayer(layerID, btn) {
-            // Remove existing weather layer if it exists
-            if (weatherLayer) {
-                map.removeLayer(weatherLayer);
-            }
+        // 2. Open-Meteo Layer Logic
+        function updateWeather(variable, btn) {
+            if (weatherLayer) map.removeLayer(weatherLayer);
 
-            // Create new weather layer
-            weatherLayer = L.tileLayer(`https://tile.openweathermap.org/map/${layerID}/{z}/{x}/{y}.png?appid=${OWM_KEY}`, {
-                opacity: 0.7,
-                zIndex: 100
-            });
+            // Open-Meteo uses a JSON config for the latest model data
+            const omSource = `https://map-tiles.open-meteo.com/data_spatial/dwd_icon/latest.json?variable=${variable}`;
+            
+            // The OpenMeteo adapter handles the 'om://' protocol
+            weatherLayer = L.openMeteoLayer(omSource, {
+                opacity: 0.6,
+                maxZoom: 12
+            }).addTo(map);
 
-            weatherLayer.addTo(map);
-
-            // Update UI
+            // UI logic
             document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
             if(btn) btn.classList.add('active');
         }
 
-        // Set default layer
-        setLayer('temp_new');
+        // Initialize with Temperature
+        updateWeather('temperature_2m');
 
-        // 3. Fetch Aviation Data (NOAA via Proxy)
-        async function updateAviation() {
+        // 3. Aviation Data Fetch (CORS Proxy)
+        async function fetchAviation() {
             const proxy = 'https://corsproxy.io/?';
             const icao = 'EGNM';
-            
             try {
-                const [metarRes, tafRes] = await Promise.all([
+                const [mRes, tRes] = await Promise.all([
                     fetch(`${proxy}https://tgftp.nws.noaa.gov/data/observations/metar/stations/${icao}.TXT`),
                     fetch(`${proxy}https://tgftp.nws.noaa.gov/data/forecasts/taf/stations/${icao}.TXT`)
                 ]);
+                const mData = await mRes.text();
+                const tData = await tRes.text();
 
-                const metarData = await metarRes.text();
-                const tafData = await tafRes.text();
-
-                document.getElementById('metar-text').innerText = metarData.split('\n').slice(1).join(' ').trim() || "No Data";
-                document.getElementById('taf-text').innerText = tafData.split('\n').slice(1).join(' ').trim() || "No Data";
-            } catch (e) {
-                console.error("Fetch Error:", e);
-            }
+                document.getElementById('metar-text').innerText = mData.split('\n').slice(1).join(' ').trim();
+                document.getElementById('taf-text').innerText = tData.split('\n').slice(1).join(' ').trim();
+            } catch (e) { console.error("Aviation sync failed", e); }
         }
 
-        updateAviation();
-        setInterval(updateAviation, 600000); // Update every 10 mins
+        fetchAviation();
+        setInterval(fetchAviation, 600000);
     </script>
 </body>
 </html>
