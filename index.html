@@ -109,31 +109,25 @@ function changeLayer(layerKey, btn) {
     if (!W_API) return;
     const { store } = W_API;
 
-    // 1. Determine Product & Layer Logic
-    const isObs = (layerKey === 'radar' || layerKey === 'satellite');
-    
-    // 2. The "Clean Swap" - Clear overlay first to reset the engine
-    store.set('overlay', null);
-
-    // 3. Set the Product
-    // Pro keys allow 'observation' for Radar. 
-    // If 'observation' still fails, the API might expect 'radar' as the product name.
-    const product = isObs ? 'observation' : 'ecmwf';
-    store.set('product', product);
-
-    // 4. Set the Overlay & Airspaces
-    setTimeout(() => {
-        store.set('overlay', layerKey);
-        
-        // Use the official plugin key for Airspaces
-        store.set('displayAirspaces', true); 
-        
-        store.set('isolines', isObs ? 'none' : 'pressure');
-    }, 100);
-
-    // UI Update
+    // 1. UI Update (do this first so the user sees a response)
     document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
     if(btn) btn.classList.add('active');
+
+    // 2. Handle Radar/Satellite specifically
+    if (layerKey === 'radar' || layerKey === 'satellite') {
+        // For many Windy API versions, you don't set product to 'observation'
+        // You just set the overlay and the API handles the rest.
+        store.set('overlay', layerKey);
+        store.set('isolines', 'none');
+    } else {
+        // 3. Handle Forecast layers (Wind, Temp, etc.)
+        store.set('product', 'ecmwf'); 
+        store.set('overlay', layerKey);
+        store.set('isolines', 'pressure');
+    }
+
+    // CRITICAL: We removed the airspaces line entirely because it is causing 
+    // the "Uncaught Error" which stops your code from running.
 }
 
 // METAR/TAF logic stays the same...
