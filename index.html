@@ -92,75 +92,88 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
-		const EGNM_COORDS = [53.86, -1.66];
-		let weatherLayer;
+        // 1. Constants & Configuration
+const CHECKWX_API_KEY = "5024b8a797df490cb1e783465b4ce8c3";
+const EGNM_COORDS = [53.86, -1.66];
+let weatherLayer;
 
-		// 1. Initialize Map
-		const map = L.map('map', { zoomControl: false, attributionControl: false }).setView(EGNM_COORDS, 8);
+// 2. Initialize Map
+const map = L.map('map', { 
+    zoomControl: false, 
+    attributionControl: false 
+}).setView(EGNM_COORDS, 8);
 
-		// FIX 1: Corrected the double "L.tileLayer" call here
-		L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+// Base Map (This provider is reliable for CORS)
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-		// Add Marker for EGNM
-		L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
+// Add Marker for EGNM
+L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
-		// 2. Optimized Map Layer Function
-		function updateMapLayer(layerName, element) {
-			if (weatherLayer) {
-				map.removeLayer(weatherLayer);
-			}
-			
-			// FIX 2: Updated URL structure to use the 'best_match' model for more reliable tiles
-			const tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerName}/{z}/{x}/{y}.png`;
-			
-			weatherLayer = L.tileLayer(tileUrl, {
-				opacity: 0.6,
-				transparent: true,
-				zIndex: 1000,
-				crossOrigin: true 
-			}).addTo(map);
+// 3. Robust Layer Switcher
+async function updateMapLayer(layerType, element) {
+    if (weatherLayer) map.removeLayer(weatherLayer);
 
-			weatherLayer.redraw();
+    let tileUrl;
 
-			document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
-			if (element) element.classList.add('active');
-		}
+    if (layerType === 'precipitation') {
+        // RainViewer is much more reliable for GitHub Pages (No CORS/CORB issues)
+        try {
+            const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+            const rvData = await rvRes.json();
+            const latest = rvData.radar.past[rvData.radar.past.length - 1].time;
+            tileUrl = `https://tilecache.rainviewer.com/v2/radar/${latest}/256/{z}/{x}/{y}/2/1_1.png`;
+        } catch (e) {
+            console.warn("RainViewer failed, falling back to Open-Meteo");
+            tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/precipitation/{z}/{x}/{y}.png`;
+        }
+    } else {
+        // Standard Open-Meteo Layers
+        tileUrl = `https://map-tiles.open-meteo.com/v1/forecast/best_match/${layerType}/{z}/{x}/{y}.png`;
+    }
 
-		// Initial Load
-		updateMapLayer('precipitation');
+    weatherLayer = L.tileLayer(tileUrl, {
+        opacity: 0.6,
+        zIndex: 1000,
+        crossOrigin: true // Crucial fix for the CORS issues in your screenshot
+    }).addTo(map);
 
-		// 3. Data Fetching (Aviation)
-		async function fetchAviationData() {
-			try {
-				const headers = { "X-API-Key": CHECKWX_API_KEY };
-				const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
-				const metarJson = await metarRes.json();
-				document.getElementById('metar-text').innerText = metarJson.data[0] || "No METAR data";
+    // Update UI buttons
+    document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
+    if (element) element.classList.add('active');
+}
 
-				const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
-				const tafJson = await tafRes.json();
-				document.getElementById('taf-text').innerText = tafJson.data[0] || "No TAF data";
-			} catch (e) { console.error("Aviation error:", e); }
-		}
+// 4. Data Fetching Functions
+async function fetchAviationData() {
+    try {
+        const headers = { "X-API-Key": CHECKWX_API_KEY };
+        const metarRes = await fetch(`https://api.checkwx.com/metar/egnm`, { headers });
+        const metarJson = await metarRes.json();
+        if (metarJson.data) document.getElementById('metar-text').innerText = metarJson.data[0];
 
-		// 4. Data Fetching (Stats)
-		async function fetchWeather() {
-			try {
-				const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
-				const data = await res.json();
-				const cur = data.current;
-				
-				document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
-				document.getElementById('precip').innerText = `${cur.precipitation} mm`;
-				document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
-				document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
-				document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
-			} catch (e) { console.error("Weather error:", e); }
-		}
+        const tafRes = await fetch(`https://api.checkwx.com/taf/egnm`, { headers });
+        const tafJson = await tafRes.json();
+        if (tafJson.data) document.getElementById('taf-text').innerText = tafJson.data[0];
+    } catch (e) { console.error("Aviation Data Error:", e); }
+}
 
-		fetchAviationData();
-		fetchWeather();
+async function fetchWeather() {
+    try {
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=53.86&longitude=-1.66&current=temperature_2m,precipitation,cloud_cover,pressure_msl,wind_speed_10m&wind_speed_unit=kn");
+        const data = await res.json();
+        const cur = data.current;
+        
+        document.getElementById('temp').innerText = `${cur.temperature_2m}°C`;
+        document.getElementById('precip').innerText = `${cur.precipitation} mm`;
+        document.getElementById('clouds').innerText = `${cur.cloud_cover}%`;
+        document.getElementById('mslp').innerText = `${cur.pressure_msl} hPa`;
+        document.getElementById('wind').innerText = `${cur.wind_speed_10m} kt`;
+    } catch (e) { console.error("Weather Data Error:", e); }
+}
+
+// Initial Run
+updateMapLayer('precipitation');
+fetchAviationData();
+fetchWeather();
 		setInterval(fetchAviationData, 300000);
 		setInterval(fetchWeather, 300000);
     </script>
