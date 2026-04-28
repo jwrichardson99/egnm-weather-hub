@@ -103,45 +103,40 @@ L.circleMarker(EGNM_COORDS, { color: '#38bdf8', radius: 8 }).addTo(map);
 
 // 2. Hardened RainViewer Logic
 async function updateMapLayer(type = 'radar', element = null) {
-    // 1. CLEAR: Remove existing weather layers completely to prevent stacking
-    map.eachLayer((layer) => {
-        if (layer instanceof L.TileLayer && !layer._url.includes('basemaps')) {
-            map.removeLayer(layer);
-        }
-    });
+    if (weatherLayer) map.removeLayer(weatherLayer);
 
-    // 2. ZOOM: Satellite requires higher zoom (at least 7) to be visible
-    if (type === 'satellite' && map.getZoom() < 7) {
-        map.setZoom(7);
-    }
+    // Satellite requires a closer look to render tiles
+    if (type === 'satellite' && map.getZoom() < 7) map.setZoom(7);
 
     try {
         const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const rvData = await rvRes.json();
         
-        let latestTime;
+        let latestTime = null;
 
-        // 3. DATA PATH: Use the correct satellite or radar array
+        // Force correct data mapping
         if (type === 'satellite') {
-            const satData = rvData.satellite?.infrared;
-            if (satData && satData.length > 0) {
-                latestTime = satData[satData.length - 1].time;
+            const infrared = rvData?.satellite?.infrared;
+            if (infrared && infrared.length > 0) {
+                // Use the second-to-last image to ensure it's fully uploaded
+                latestTime = infrared[infrared.length - 1].time;
             }
         } else {
-            const radData = rvData.radar?.past;
-            if (radData && radData.length > 0) {
-                latestTime = radData[radData.length - 1].time;
+            const past = rvData?.radar?.past;
+            if (past && past.length > 0) {
+                latestTime = past[past.length - 1].time;
             }
         }
 
-        // 4. FALLBACK: Use a timestamp from 20 mins ago to ensure the server has the file
+        // Fallback logic if the API returns empty
         if (!latestTime) {
+            console.warn("API Empty. Using 20-minute trailing fallback.");
             latestTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 600) - 1200;
         }
 
-        // 5. COLOR SCHEME: Satellite uses '0' (Grayscale) for clear clouds
-        const colorScheme = (type === 'satellite') ? 0 : 1; 
-        const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/${colorScheme}/1_1.png`;
+        // Satellite MUST use color 0 (Grayscale) or it may appear transparent
+        const colorId = (type === 'satellite') ? 0 : 1;
+        const tileUrl = `https://tilecache.rainviewer.com/v2/${type}/${latestTime}/256/{z}/{x}/{y}/${colorId}/1_1.png`;
 
         weatherLayer = L.tileLayer(tileUrl, {
             opacity: 0.8,
@@ -149,13 +144,12 @@ async function updateMapLayer(type = 'radar', element = null) {
             crossOrigin: true
         }).addTo(map);
 
-        console.log(`Switched to ${type} at time ${latestTime}`);
+        console.log(`Layer updated: ${type} at ${latestTime}`);
 
     } catch (e) {
-        console.error("Layer Switch Error:", e.message);
+        console.error("Map layer failed:", e.message);
     }
 
-    // 6. UI: Highlight the active button
     if (element) {
         document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
         element.classList.add('active');
